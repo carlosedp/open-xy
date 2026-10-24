@@ -37,6 +37,7 @@ version is rejected. The output differs from stock in exactly these places:
 | Project companions | 4 | Writes a [companion](projects.md) after every project save, and shows companions beside projects over MTP |
 | Per-voice profiling | 10 optional | Bypasses diagnostic timing in both stock voice renderers when built with profiling off |
 | Startup label | 1 | Shows `OPEN <version>-1.2.0` at boot, `<version>` from [`VERSION`](../VERSION), through the stock startup text renderer |
+| Retrospective notes | 7 | Observes live input and stock transport, then applies a double-Record capture through stock note editing and undo |
 | Module | 1 record | One loader block holding the linked module |
 
 The sample rows (sample dispatch, analysis, drum-page services and recorder)
@@ -58,6 +59,37 @@ They preserve audio processing and voice-lifetime return paths. Counter
 initialization, resets, exporters, coarse timing and deadline clocks remain
 stock. These shims are linked in both modes so the browser can select the mode
 without recompilation; enabled builds leave all ten stock hook sites intact.
+
+## Retrospective notes
+
+The internal service in `ghost_capture.cpp` keeps a bounded current-track history;
+`ghost_capture_stock.cpp` supplies the version-specific recording context and
+forwards stock calls. It is not a public plugin registration interface.
+
+The seven hooks replace the controller-update call at `0x8c0bb698`, queued key
+dispatch at `0x8c0b6ce4`, normalized live onset/release at `0x8d59269e` and
+`0x8d592532`, accepted-note bookkeeping at `0x8d593b7c`, recorder tick at
+`0x8d5964d4`, and Stop cleanup at `0x8d5960f0`.
+The Stop hook observes a stop/restart pair within one controller update. The key
+span also replaces the following queue-address load; its wrapper returns that
+address in R0. This
+permits an absolute call without changing the stock stack or adding assembly.
+Immediate input is restricted by stock to keyboard keys 26–49; Record (50)
+uses the queue. The live-note wrappers also cancel interrupted tap gestures.
+The onset wrapper establishes a scoped live-input identity; only stock-accepted
+notes inside that scope enter history. Direct sequencer calls and step entry do
+not. Stock input arguments and normal recording actions are forwarded unchanged.
+
+History uses the same position getter, pickup convention and scaled Q8 duration
+deltas as stock recording. Pattern quantization remains stock playback behavior.
+Insertion calls the stock note container with its scale-dependent collision
+radius and 120-note capacity, after resetting and taking one stock undo snapshot.
+It publishes the pattern once, without calling the audible note dispatcher or
+moving the playhead. An empty cache or full pattern produces no success popup. History
+retains at most 120 recent onsets and 20 simultaneously held notes; it is cleared
+after a successful insertion, on track/context changes and on a new playback
+start. Stop preserves the partial take. Host adapter tests use stock doubles;
+they do not establish device scheduling or timing.
 
 ## Startup
 
