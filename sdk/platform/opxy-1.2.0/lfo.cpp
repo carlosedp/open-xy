@@ -3,13 +3,27 @@
 namespace {
 using namespace opxy;
 using namespace opxy::platform;
-u32 extended(u32 engine) {
+const LfoMachine* machine(u32 engine) {
     for (u32 i = 0; i < sdk_lfo_machine_count; ++i) {
         const LfoMachine& m = sdk_lfo_machines[i];
         if (static_cast<u32>(reinterpret_cast<__UINTPTR_TYPE__>(m.id)) == engine)
-            return m.parameters > 4 && m.parameters <= parameter_slots && m.ready() == 1 ? m.parameters : 0;
+            return m.parameters > 4 && m.parameters <= parameter_slots && m.ready() == 1 ? &m : nullptr;
     }
-    return 0;
+    return nullptr;
+}
+u32 extended(u32 engine) {
+    const LfoMachine* m = machine(engine);
+    return m ? m->parameters : 0;
+}
+u32 target_count(u32 track, u32 index) {
+    if (track >= 8 || (index != 27 && index != 31)) return 0;
+    const u32 kind = lfo::type(track);
+    if (!(((kind == 1 || kind == 3) && index == 27) || (kind == 2 && index == 31))) return 0;
+    const u32 count = extended(lfo::gui_engine(track));
+    if (!count) return 0;
+    const u32 value = lfo::group_value(track);
+    const u32 group = kind == 3 ? value >> 29 : ((value >> 8) * 6) >> 24;
+    return group == 0 ? count : 0;
 }
 bool extra_icon(u32 group, u32 slot) {
     if (group != 0 || slot < page_controls || slot >= parameter_slots) return false;
@@ -27,11 +41,32 @@ u32 sdk_lfo_range(u32 track, u32 group, u32) {
 
 // Stock scrolls a strip containing four knob icons by -spacing * slot.
 // The three callers pass their already-decoded group and full destination;
-// only the icon scroll repeats. Labels, cached selection and audio keep slot.
+// only the icon scroll follows the assigned encoder. Labels and audio keep slot.
 u32 sdk_lfo_icon_slide(u32 controller, u32 position, i32 target, u32 duration, u32 group, u32 slot) {
     if (extra_icon(group, slot))
-        target = (target / static_cast<i32>(slot)) * static_cast<i32>(slot % page_controls);
+        target = (target / static_cast<i32>(slot)) * static_cast<i32>(sdk_lfo_icon_slot(slot, 1));
     return lfo::animate(controller, position, target, duration);
+}
+
+u32 sdk_lfo_icon_slot(u32 slot, u32 enabled) {
+    if (!enabled || slot < page_controls || slot >= parameter_slots) return slot;
+    const u32 track = lfo::selected_track();
+    const LfoMachine* m = track < 8 ? machine(lfo::gui_engine(track)) : nullptr;
+    return m && slot < m->parameters ? m->controls[slot] : slot;
+}
+
+// 8c0b38b4: the instrument controller's encoder-click path publishes after
+// its own four-way cycle, bypassing the turn quantizer. Read the unchanged
+// selector and cycle its full slot before delegating the original publication.
+u32 sdk_lfo_cycle(u32 project, u32 track, u32 index, i32 value) {
+    const u32 count = target_count(track, index);
+    if (count) {
+        const i32 current = lfo::value(project, track, index);
+        const u32 slot = current < 0 ? 0 : static_cast<u32>(current) >> 28;
+        const u32 next = slot + 1 < count ? slot + 1 : 0;
+        value = static_cast<i32>((next << 28) + 0x08000000u);
+    }
+    return lfo::publish(project, track, index, value);
 }
 
 // Element additionally hides its strip when slot > 3, before naming the
@@ -42,27 +77,19 @@ const char* sdk_lfo_element_label(u32 group, u32 slot, u32 flag, u32 widget) {
 }
 
 i32 sdk_lfo_step(u32 track, u32 index, i32 value, const i32* event) {
-    if (track < 8 && event && (index == 27 || index == 31)) {
-        const u32 kind = lfo::type(track);
-        const bool target = ((kind == 1 || kind == 3) && index == 27) || (kind == 2 && index == 31);
-        const u32 count = target ? extended(lfo::gui_engine(track)) : 0;
-        if (count) {
-            const u32 group_value = lfo::group_value(track);
-            const u32 group = kind == 3 ? group_value >> 29 : ((group_value >> 8) * 6) >> 24;
-            if (group == 0) {
-                i32 slot = value < 0 ? 0 : static_cast<u32>(value) >> 28;
-                if (slot >= static_cast<i32>(count)) slot = count - 1;
-                // Match stock's discrete detents and accelerated turns. Bound
-                // before multiplying so even a bad event cannot overflow.
-                i32 delta = event[1];
-                if (delta > 8) delta = 8;
-                if (delta < -8) delta = -8;
-                slot += delta * (event[2] > 0 ? 2 : 1);
-                if (slot < 0) slot = 0;
-                if (slot >= static_cast<i32>(count)) slot = count - 1;
-                return static_cast<i32>((static_cast<u32>(slot) << 28) + 0x08000000u);
-            }
-        }
+    const u32 count = event ? target_count(track, index) : 0;
+    if (count) {
+        i32 slot = value < 0 ? 0 : static_cast<u32>(value) >> 28;
+        if (slot >= static_cast<i32>(count)) slot = count - 1;
+        // Match stock's discrete detents and accelerated turns. Bound
+        // before multiplying so even a bad event cannot overflow.
+        i32 delta = event[1];
+        if (delta > 8) delta = 8;
+        if (delta < -8) delta = -8;
+        slot += delta * (event[2] > 0 ? 2 : 1);
+        if (slot < 0) slot = 0;
+        if (slot >= static_cast<i32>(count)) slot = count - 1;
+        return static_cast<i32>((static_cast<u32>(slot) << 28) + 0x08000000u);
     }
     return lfo::step(track, index, value, event);
 }

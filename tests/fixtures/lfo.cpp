@@ -11,11 +11,11 @@ using namespace opxy::platform;
 static int ownership = 1;
 static int ready() { return ownership; }
 const LfoMachine sdk_lfo_machines[] = {
-    {reinterpret_cast<const char*>(40), ready, 4},
-    {reinterpret_cast<const char*>(41), ready, 5},
-    {reinterpret_cast<const char*>(42), ready, 6},
-    {reinterpret_cast<const char*>(43), ready, 7},
-    {reinterpret_cast<const char*>(44), ready, 8},
+    {reinterpret_cast<const char*>(40), ready, 4, {0, 1, 2, 3}},
+    {reinterpret_cast<const char*>(41), ready, 5, {0, 1, 2, 3, 3}}, // Braids shares white.
+    {reinterpret_cast<const char*>(42), ready, 6, {0, 1, 2, 3, 2, 2}},
+    {reinterpret_cast<const char*>(43), ready, 7, {0, 1, 2, 3, 1, 0, 2}},
+    {reinterpret_cast<const char*>(44), ready, 8, {0, 1, 2, 3, 0, 1, 2, 3}},
 };
 const u32 sdk_lfo_machine_count = 5;
 static u32 engine, kind, group, routed, gui_reads, delegated, expected_track;
@@ -23,6 +23,8 @@ static i32 amount;
 static i32 icon_target;
 static u32 named_group, named_slot, named_flag, shown_widget;
 static bool audio;
+static i32 stored, published;
+static u32 value_reads, publications;
 namespace opxy { namespace platform { namespace lfo {
 u32 gui_engine(u32 track) { require(!audio && track == expected_track); ++gui_reads; return engine; }
 u32 audio_engine(u32 track) { require(audio && track == expected_track); return engine; }
@@ -41,6 +43,16 @@ const char* name(u32 group, u32 slot, u32 flag) {
 }
 void show(u32 widget) { require(!audio); shown_widget = widget; }
 i32 step(u32, u32, i32 value, const i32*) { ++delegated; return value; }
+i32 value(u32 project, u32 track, u32 index) {
+    require(!audio && project == 123 && track == expected_track && index == (kind == 2 ? 31u : 27u));
+    ++value_reads;
+    return stored;
+}
+u32 publish(u32 project, u32 track, u32, i32 value) {
+    require(!audio && project == 123 && track == expected_track);
+    ++publications; published = value;
+    return 456;
+}
 void modulate(u32 project, u32 track, u32 index, i32 value) {
     require(audio && project == 123 && track == expected_track);
     routed = index; amount = value;
@@ -70,7 +82,16 @@ int main() {
                     require(static_cast<u32>(value) >> 28 == slot);
                     route(track, value, slot);
                     require(sdk_lfo_icon_slide(101, 102, -13312 * static_cast<i32>(slot), 153, 0, slot) == 103);
-                    require(icon_target == -13312 * static_cast<i32>(slot % 4));
+                    const u32 control = sdk_lfo_machines[count - 4].controls[slot];
+                    require(icon_target == -13312 * static_cast<i32>(control));
+                    require(sdk_lfo_icon_slot(slot, 1) == control);
+                    require(sdk_lfo_icon_slot(slot, 0) == slot);
+                    stored = value;
+                    const u32 reads = value_reads, writes = publications;
+                    require(sdk_lfo_cycle(123, track, index, 0x70000000) == 456);
+                    require(value_reads == reads + 1 && publications == writes + 1);
+                    require(static_cast<u32>(published) == (((slot + 1) % count) << 28) + 0x08000000u);
+                    route(track, published, (slot + 1) % count);
                     shown_widget = 0;
                     require(sdk_lfo_element_label(0, slot, 1, 104) != nullptr);
                     require(named_group == 0 && named_slot == slot && named_flag == 1);
@@ -89,12 +110,21 @@ int main() {
                 require(static_cast<u32>(sdk_lfo_step(track, index, 0, huge)) >> 28 == count - 1);
                 require(static_cast<u32>(sdk_lfo_step(track, index, 0x7fffffff, negative)) >> 28 == 0);
                 route(track, 0x7fffffff, count - 1); // a saved destination from a larger machine
+                stored = 0x7fffffff;
+                sdk_lfo_cycle(123, track, index, 123);
+                require(published == 0x08000000); // recover an out-of-range saved slot
                 const u32 calls = delegated;
                 sdk_lfo_step(track, index == 27 ? 31 : 27, 123, up);
                 sdk_lfo_step(track, index, 123, nullptr);
                 group = 0x7fffffff;
                 sdk_lfo_step(track, index, 123, up);
                 require(delegated == calls + 3);
+                const u32 reads = value_reads;
+                sdk_lfo_cycle(123, track, index, 123);
+                require(published == 123 && value_reads == reads);
+                group = 0;
+                sdk_lfo_cycle(123, track, index == 27 ? 31 : 27, 123);
+                require(published == 123 && value_reads == reads);
             }
         }
     }
@@ -108,6 +138,10 @@ int main() {
             const u32 calls = delegated;
             sdk_lfo_step(0, 27, 0, up);
             require(delegated == calls + (owned ? 0 : 1));
+            stored = 0x78000000;
+            const u32 reads = value_reads;
+            sdk_lfo_cycle(123, 0, 27, 123);
+            require(published == (owned ? 0x08000000 : 123) && value_reads == reads + (owned ? 1 : 0));
             route(0, 0x78000000, owned ? 7 : 3);
             sdk_lfo_icon_slide(101, 102, -7000, 153, 0, 7);
             require(icon_target == (owned ? -3000 : -7000));
@@ -126,6 +160,7 @@ int main() {
     }
     engine = 41; // Five parameters: undeclared slots must not reveal a widget.
     for (u32 slot : {5u, 6u, 7u, 8u, 0xffffffffu}) {
+        require(sdk_lfo_icon_slot(slot, 1) == slot);
         sdk_lfo_icon_slide(101, 102, -7000, 153, 0, slot);
         require(icon_target == -7000);
         shown_widget = 0;
@@ -138,6 +173,9 @@ int main() {
         const u32 calls = delegated;
         sdk_lfo_step(0, 27, 123, up); sdk_lfo_step(0, 31, 123, up);
         require(delegated == calls + 2);
+        const u32 reads = value_reads;
+        sdk_lfo_cycle(123, 0, 27, 123); sdk_lfo_cycle(123, 0, 31, 123);
+        require(published == 123 && value_reads == reads);
     }
     for (u32 track : {8u, 10u, 14u, 15u, 0xffffffffu}) {
         expected_track = track;
@@ -145,6 +183,9 @@ int main() {
         const u32 calls = delegated;
         sdk_lfo_step(track, 27, 123, up);
         require(delegated == calls + 1);
+        const u32 reads = value_reads;
+        sdk_lfo_cycle(123, track, 27, 123);
+        require(published == 123 && value_reads == reads);
         route(track, 0x78000000, 3);
         sdk_lfo_icon_slide(101, 102, -7000, 153, 0, 7);
         require(icon_target == -7000);

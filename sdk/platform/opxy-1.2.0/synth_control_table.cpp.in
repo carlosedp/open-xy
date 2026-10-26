@@ -20,6 +20,6 @@ const opxy::u32 sdk_synth_control_count = sizeof(sdk_synth_controls) / sizeof(sd
 
 const opxy::platform::LfoMachine sdk_lfo_machines[] = {
 @LFO_MACHINES@
-    {nullptr, nullptr, 0}
+    {nullptr, nullptr, 0, {}}
 };
 const opxy::u32 sdk_lfo_machine_count = sizeof(sdk_lfo_machines) / sizeof(sdk_lfo_machines[0]) - 1;

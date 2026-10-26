@@ -140,8 +140,11 @@ switches between FM ratio and depth.
 On instrument tracks, the Value, Random and Element LFOs can target every
 declared parameter of a custom synth or sample engine, including all eight
 when present. Destination names follow parameter order regardless of which
-alternate the engine page shows. Machines with five to eight parameters use
-the same four knob icons again for parameters five through eight. They use
+alternate the engine page shows. Synth destination icons follow each
+parameter's assigned encoder, including alternates that share an encoder.
+Sample-engine icons repeat for the second row of four controls. Turning
+stops at the first and last declared destination; pressing cycles through
+the declared destinations and wraps to the first. Extended machines use
 eight selector positions, bounded to their declared count; stock engines and
 machines with at most four parameters retain stock selection. When opening
 projects saved with older firmware, reselect LFO engine destinations on

@@ -868,6 +868,16 @@
       "call": true
     },
     {
+      "kind": "hook",
+      "name": "LFO destination encoder click cycle",
+      "address": "0x8c0b38b4",
+      "file_offset": "0xeac74",
+      "length": 8,
+      "before": "00de5a8d58b20000",
+      "symbol": "sdk_lfo_cycle",
+      "call": true
+    },
+    {
       "kind": "startup",
       "name": "Boot-screen version label",
       "address": "0x8c0b9114",

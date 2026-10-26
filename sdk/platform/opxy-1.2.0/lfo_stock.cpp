@@ -19,6 +19,12 @@ u32 group_value(u32 track) {
 i32 step(u32 track, u32 index, i32 value, const i32* event) {
     return stock<i32(u32, u32, i32, const i32*)>(0x8d5ab618)(track, index, value, event);
 }
+i32 value(u32 project, u32 track, u32 index) {
+    return stock<i32(u32, u32, u32)>(0x8d5aac40)(project, track, index);
+}
+u32 publish(u32 project, u32 track, u32 index, i32 value) {
+    return stock<u32(u32, u32, u32, i32)>(0x8d5ab258)(project, track, index, value);
+}
 void modulate(u32 project, u32 track, u32 index, i32 amount) {
     stock<void(u32, u32, u32, i32)>(0x8d5182d4)(project, track, index, amount);
 }

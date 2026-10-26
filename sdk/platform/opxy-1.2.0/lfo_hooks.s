@@ -4,6 +4,7 @@
  * retain their stock values. Other destination groups keep their own calls.
  */
 .section .text
+.include "sdk/platform/opxy-1.2.0/hook.inc"
 .align 2
 .extern sdk_lfo_modulate
 .global sdk_lfo_audio
@@ -98,16 +99,18 @@ sdk_lfo_element_name:
 
 /* 8d53ecc0: Element initializes its strip before the first animation. The
  * preceding instruction already saved the full slot at [P5 + 0x18]. R7 is
- * sdk_lfo_range's ownership/group result. Wrap only the icon offset, then
+ * sdk_lfo_range's ownership/group result. Map only the icon offset, then
  * replay the displaced fixed-point multiply; R1 and R0 remain its outputs.
  */
 .global sdk_lfo_element_initial_icon
+.extern sdk_lfo_icon_slot
 .type sdk_lfo_element_initial_icon, STT_FUNC
 sdk_lfo_element_initial_icon:
-    CC = R7 == 0;
-    IF CC JUMP .Llfo_initial_stock;
-    BITCLR(R0, 2);
-.Llfo_initial_stock:
+    HOOK_SAVE
+    R1 = R7;
+    CALL sdk_lfo_icon_slot;
+    HOOK_RESULT R0
+    HOOK_RESTORE
     R0 <<= 10;
     (R1:0) = R1 * R0 (IS, NS);
     R1 <<= 22;

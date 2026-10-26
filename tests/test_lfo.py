@@ -18,7 +18,7 @@ class Lfo(unittest.TestCase):
     run_fixture = services.SampleServices.run_fixture
 
     @unittest.skipUnless(services.HOST_CXX, 'No working host C++ compiler')
-    def test_destinations_keep_full_audio_slots_and_repeat_knob_icons(self):
+    def test_destinations_cycle_declared_slots_and_use_assigned_encoder_icons(self):
         self.run_fixture('lfo', ('sdk/platform/opxy-1.2.0/lfo.cpp',))
 
     def test_metadata_includes_instrument_records_and_stable_slot_names(self):
@@ -26,14 +26,14 @@ class Lfo(unittest.TestCase):
         definition = copy.deepcopy(machines[0].definition)
         for i in range(4):
             parameter = copy.deepcopy(definition['parameters'][i])
-            parameter.update(id='extra' + str(i), label='Extra ' + str(i), control=i)
+            parameter.update(id='extra' + str(i), label='Extra ' + str(i), control=(3, 3, 0, 2)[i])
             definition['parameters'].append(parameter)
         machines[0] = replace(machines[0], definition=definition)
         with tempfile.TemporaryDirectory() as directory:
             table = generate_synth_controls(directory, machines).read_text(encoding='utf-8')
             voice = generate_voice(directory, machines[0]).read_text(encoding='utf-8')
-        self.assertIn('{probesynth_engine_id, probesynth_record_ready, 8}', table)
-        self.assertIn('{probesample_engine_id, probesample_record_ready, 3}', table)
+        self.assertIn('{probesynth_engine_id, probesynth_record_ready, 8, {0, 1, 2, 3, 3, 3, 0, 2}}', table)
+        self.assertIn('{probesample_engine_id, probesample_record_ready, 3, {0, 1, 2}}', table)
         self.assertNotIn('probefx_record_ready', table)
         self.assertNotIn('sdk_synth_title_slot(', voice)
         self.assertIn('? labels[index] : ""', voice)
@@ -57,6 +57,7 @@ class Lfo(unittest.TestCase):
             0x8d5431ca: ('sdk_lfo_value_icon', 0x8d5fffa4),
             0x8d53f3e8: ('sdk_lfo_element_name', 0x8d4d8940),
             0x8d53ecc0: ('sdk_lfo_element_initial_icon', None),
+            0x8c0b38b4: ('sdk_lfo_cycle', 0x8d5ab258),
         }
         seen = set()
         for patch in profile['patches']:

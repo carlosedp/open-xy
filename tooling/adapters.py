@@ -297,7 +297,8 @@ def generate_synth_controls(directory, machines):
         if m.kind != 'effect':
             declarations.append(f'int {m.prefix}_record_ready() __asm__("{m.prefix}_record_ready");')
             declarations.append(f'extern const char {m.prefix}_engine_id[] __asm__("{m.prefix}_engine_id");')
-            lfo_rows.append(f'    {{{m.prefix}_engine_id, {m.prefix}_record_ready, {len(m.definition["parameters"])}}},')
+            controls = ', '.join(str(position % 4) for position in control_positions(m.definition))
+            lfo_rows.append(f'    {{{m.prefix}_engine_id, {m.prefix}_record_ready, {len(m.definition["parameters"])}, {{{controls}}}}},')
         if m.kind not in ('synth', 'effect'):
             continue
         effect = m.kind == 'effect'
