@@ -73,17 +73,31 @@ def main():
                 sections.get('.bss', {}).get('size', 0) == result['sizes']['bss'], 'GNU memory allocation differs')
         for name, value in result['globals'].items():
             require(symbols[name]['value'] == value, 'GNU symbol differs: ' + name)
-        profile = copy.deepcopy(kit['profile'])
         services = active_services(kit['profile'], (m['kind'] for m in kit['machines'] if m['id'] in result['selected']))
-        for patch in profile['patches']:
-            if not patch_active(patch, services):
-                patch['after'] = patch['before']
-            elif patch['kind'] == 'hook':
-                patch['after'] = hook_instruction(patch, symbols[patch['symbol']]['value']).hex()
-            elif patch['kind'] == 'startup':
-                patch['after'] = startup_label.jump(symbols[patch['symbol']]['value']).hex()
-        expected = assemble(stock, module, profile, kit['profile'], len(profile['patches']), services)
-        require(expected == prefix.with_suffix('.ldr').read_bytes(), 'Python/browser firmware differs')
+        modes = {}
+        for profiling in (True, False):
+            profile = copy.deepcopy(kit['profile'])
+            for patch in profile['patches']:
+                if not patch_active(patch, services, profiling):
+                    patch['after'] = patch['before']
+                elif patch['kind'] == 'hook':
+                    patch['after'] = hook_instruction(patch, symbols[patch['symbol']]['value']).hex()
+                elif patch['kind'] == 'startup':
+                    patch['after'] = startup_label.jump(symbols[patch['symbol']]['value']).hex()
+            expected = assemble(stock, module, profile, kit['profile'], len(profile['patches']), services, profiling)
+            suffix = '.ldr' if profiling else '.profiling-off.ldr'
+            require(expected == prefix.with_suffix(suffix).read_bytes(), 'Python/browser firmware differs: ' + suffix)
+            modes[profiling] = expected
+        # The modes differ only inside the reviewed profiling hook windows.
+        restored = bytearray(modes[False])
+        for patch in kit['profile']['patches']:
+            if patch.get('profiling') is False:
+                at, count = int(patch['file_offset'], 16), patch['length']
+                require(modes[True][at:at + count] == bytes.fromhex(patch['before']),
+                        'SDK default changed profiling instructions')
+                restored[at:at + count] = modes[True][at:at + count]
+        require(bytes(restored) == modes[True], 'Profiling mode changed unrelated bytes')
+        expected = modes[True]
         selected = [m for m in kit['machines'] if m['id'] in result['selected']]
         catalog = json.loads((content / 'op1_factory.json').read_bytes())
         for machine in selected:
