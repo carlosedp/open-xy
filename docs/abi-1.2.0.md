@@ -395,9 +395,18 @@ when that byte is nonzero. Its call at `8d51a96a` uses vtable `+12` with
 stack. The payload is passed directly, rather than through the normal
 renderer's published region pointer. The constructor calls vtable `+20`
 at `8d51a358` with `(self, key, velocity, region, track_parameters)` to start
-the note. Both calls have dedicated SDK adapters. Vtable `+32` returns zero
+the note. Both calls have dedicated SDK adapters. Vtable `+24` reports whether
+the handle still owns a voice. Zero causes the renderer to report completion;
+the caller at `8d51bbda` retires it after mixing that block. Active handles
+remain allocated until the stock amplitude envelope completes or the SDK
+steals their slot. Vtable `+32` returns zero
 for mono output; the unused normal-render entry `+8` fills its output with
 silence. The kit never calls stock Drumline synthesis.
+Unlike the normal synth path, this renderer leaves amplitude application to
+the drum DSP. The SDK multiplies normalized output by each Q31 envelope/gain
+word at `11905300` exactly once, using the native fixed-point multiply. It
+retains the SDK's normal gain query; Drumline's private output-level shifts
+do not apply to the public Q31 contract.
 The drum renderer writes the pitch buffer at `11904b00` with each phase
 increment shifted right by 16 (`8d51a850`–`8d51a854`). The SDK expands those
 64 values back to the public `Pitch` units before the contributor callback;

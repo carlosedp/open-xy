@@ -8,6 +8,7 @@
 // knows the stock pitch buffer, method offsets and symbol names.
 #include "core.h"
 #include "engine.cpp"
+#include <opxy/q31.hpp>
 #include "stock.hpp"
 #include "synth_controls.hpp"
 #include "drum_machines.hpp"
@@ -38,6 +39,9 @@ static_assert(alignof(Voice) == @VOICE_ALIGNMENT@, "Declared voice alignment dif
 static_assert(@SHARED_BYTES@ == 0 ? __is_empty(Shared) : sizeof(Shared) == @SHARED_BYTES@,
               "Declared shared size differs from the compiled type");
 static const opxy::u32* const increments = reinterpret_cast<const opxy::u32*>(opxy::platform::kPitchIncrements);
+// The alternate stock renderer prepares this gain/envelope vector but leaves
+// its application to the drum DSP (stock Drumline consumes it at 11a0783e).
+static const opxy::i32* const amplitude = reinterpret_cast<const opxy::i32*>(0x11905300);
 // A stable nonzero voice ID: the stock voice index plus one.
 static opxy::u32 owner(const Handle* handle) { return static_cast<opxy::u32>(handle - handles) + 1; }
 // The voice a handle still holds, or none if its voice went to another note.
@@ -125,6 +129,8 @@ int @PREFIX@_render(void* self, opxy::i32* output, const opxy::i32* region,
         opxy::u32 pitch[opxy::block_frames];
         for (unsigned i = 0; i < opxy::block_frames; ++i) pitch[i] = increments[i] << 16;
         @NAMESPACE@::render(slot->voice, shared, slot->owner, output, live, pitch);
+        for (unsigned i = 0; i < opxy::block_frames; ++i)
+            output[i] = opxy::q31::multiply(output[i], amplitude[i]);
     } else {
         for (unsigned i = 0; i < opxy::block_frames; ++i) output[i] = 0;
     }
@@ -136,6 +142,10 @@ static int render_normal(void*, opxy::i32* output, const opxy::i32*) {
     for (unsigned i = 0; i < opxy::block_frames; ++i) output[i] = 0;
     return 0;
 }
+// Stock's alternate renderer retires the note when +24 reports inactive.
+// Retain our allocated voice until stock's amplitude envelope ends the note;
+// stolen or destroyed handles can be retired immediately.
+static int active(void* self) { return held(static_cast<Handle*>(self)) ? 1 : 0; }
 static int zero() { return 0; }
 static void noop() {}
 const char @PREFIX@_name[] = "@NAME@";
@@ -156,7 +166,7 @@ const void* const @PREFIX@_vtable[11] = {
     reinterpret_cast<const void*>(&@PREFIX@_destroy), reinterpret_cast<const void*>(&@PREFIX@_destroy),
     reinterpret_cast<const void*>(&render_normal), reinterpret_cast<const void*>(&@PREFIX@_render),
     reinterpret_cast<const void*>(&@PREFIX@_start), reinterpret_cast<const void*>(&start_drum),
-    reinterpret_cast<const void*>(&zero), reinterpret_cast<const void*>(&noop),
+    reinterpret_cast<const void*>(&active), reinterpret_cast<const void*>(&noop),
     reinterpret_cast<const void*>(&zero), reinterpret_cast<const void*>(&zero),
     reinterpret_cast<const void*>(opxy::platform::kVoiceDefaultMethod)
 };
