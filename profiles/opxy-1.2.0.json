@@ -978,6 +978,26 @@
       "call": true
     },
     {
+      "kind": "hook",
+      "name": "LFO Random effective destination label",
+      "address": "0x8d5404b6",
+      "file_offset": "0x177892",
+      "length": 4,
+      "before": "fce345c2",
+      "symbol": "sdk_lfo_label",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "LFO Value effective destination label",
+      "address": "0x8d542da8",
+      "file_offset": "0x17a184",
+      "length": 4,
+      "before": "fce3ccad",
+      "symbol": "sdk_lfo_label",
+      "call": true
+    },
+    {
       "kind": "startup",
       "name": "Boot-screen version label",
       "address": "0x8c0b9114",

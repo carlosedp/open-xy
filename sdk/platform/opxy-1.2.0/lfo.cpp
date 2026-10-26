@@ -28,7 +28,7 @@ u32 target_count(u32 track, u32 index) {
 bool extra_icon(u32 group, u32 slot) {
     if (group != 0 || slot < page_controls || slot >= parameter_slots) return false;
     const u32 track = lfo::selected_track();
-    return track < 8 && slot < extended(lfo::gui_engine(track));
+    return track < 8 && extended(lfo::gui_engine(track));
 }
 }
 
@@ -41,7 +41,8 @@ u32 sdk_lfo_range(u32 track, u32 group, u32) {
 
 // Stock scrolls a strip containing four knob icons by -spacing * slot.
 // The three callers pass their already-decoded group and full destination;
-// only the icon scroll follows the assigned encoder. Labels and audio keep slot.
+// only the icon scroll follows the assigned encoder. Retained destinations
+// beyond the machine's count resolve to its last slot, matching audio.
 u32 sdk_lfo_icon_slide(u32 controller, u32 position, i32 target, u32 duration, u32 group, u32 slot) {
     if (extra_icon(group, slot))
         target = (target / static_cast<i32>(slot)) * static_cast<i32>(sdk_lfo_icon_slot(slot, 1));
@@ -52,7 +53,16 @@ u32 sdk_lfo_icon_slot(u32 slot, u32 enabled) {
     if (!enabled || slot < page_controls || slot >= parameter_slots) return slot;
     const u32 track = lfo::selected_track();
     const LfoMachine* m = track < 8 ? machine(lfo::gui_engine(track)) : nullptr;
-    return m && slot < m->parameters ? m->controls[slot] : slot;
+    return m ? m->controls[slot < m->parameters ? slot : m->parameters - 1] : slot;
+}
+
+const char* sdk_lfo_label(u32 group, u32 slot, u32 flag) {
+    if (group == 0 && slot < parameter_slots) {
+        const u32 track = lfo::selected_track();
+        const u32 count = track < 8 ? extended(lfo::gui_engine(track)) : 0;
+        if (count && slot >= count) slot = count - 1;
+    }
+    return lfo::name(group, slot, flag);
 }
 
 // 8c0b38b4: the instrument controller's encoder-click path publishes after
@@ -70,10 +80,11 @@ u32 sdk_lfo_cycle(u32 project, u32 track, u32 index, i32 value) {
 }
 
 // Element additionally hides its strip when slot > 3, before naming the
-// destination. Restore visibility for a declared extra slot; name it as-is.
+// destination. Restore visibility for extended destinations, including a
+// retained selector that now resolves to the machine's last declared slot.
 const char* sdk_lfo_element_label(u32 group, u32 slot, u32 flag, u32 widget) {
     if (extra_icon(group, slot)) lfo::show(widget);
-    return lfo::name(group, slot, flag);
+    return sdk_lfo_label(group, slot, flag);
 }
 
 i32 sdk_lfo_step(u32 track, u32 index, i32 value, const i32* event) {

@@ -33,6 +33,7 @@ extern const opxy::platform::LfoMachine sdk_lfo_machines[] __asm__("sdk_lfo_mach
 extern const opxy::u32 sdk_lfo_machine_count __asm__("sdk_lfo_machine_count");
 opxy::u32 sdk_lfo_range(opxy::u32 track, opxy::u32 group, opxy::u32 stock_flag) __asm__("sdk_lfo_range");
 opxy::u32 sdk_lfo_icon_slot(opxy::u32 slot, opxy::u32 enabled) __asm__("sdk_lfo_icon_slot");
+const char* sdk_lfo_label(opxy::u32 group, opxy::u32 slot, opxy::u32 flag) __asm__("sdk_lfo_label");
 opxy::u32 sdk_lfo_cycle(opxy::u32 project, opxy::u32 track, opxy::u32 index, opxy::i32 value) __asm__("sdk_lfo_cycle");
 opxy::i32 sdk_lfo_step(opxy::u32 track, opxy::u32 index, opxy::i32 value, const opxy::i32* event) __asm__("sdk_lfo_step");
 void sdk_lfo_modulate(opxy::u32 project, opxy::u32 track, opxy::u32 index,

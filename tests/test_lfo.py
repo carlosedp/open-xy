@@ -58,6 +58,8 @@ class Lfo(unittest.TestCase):
             0x8d53f3e8: ('sdk_lfo_element_name', 0x8d4d8940),
             0x8d53ecc0: ('sdk_lfo_element_initial_icon', None),
             0x8c0b38b4: ('sdk_lfo_cycle', 0x8d5ab258),
+            0x8d5404b6: ('sdk_lfo_label', 0x8d4d8940),
+            0x8d542da8: ('sdk_lfo_label', 0x8d4d8940),
         }
         seen = set()
         for patch in profile['patches']:

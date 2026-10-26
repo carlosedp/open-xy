@@ -145,7 +145,9 @@ parameter's assigned encoder, including alternates that share an encoder.
 Sample-engine icons repeat for the second row of four controls. Turning
 stops at the first and last declared destination; pressing cycles through
 the declared destinations and wraps to the first. Extended machines use
-eight selector positions, bounded to their declared count; stock engines and
+eight selector positions, bounded to their declared count. A retained
+destination beyond the machine's count resolves to its last parameter in
+audio, labels and icons. Stock engines and
 machines with at most four parameters retain stock selection. When opening
 projects saved with older firmware, reselect LFO engine destinations on
 machines with more than four parameters: their saved selector values now

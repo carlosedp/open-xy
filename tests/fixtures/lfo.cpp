@@ -112,6 +112,7 @@ int main() {
                     shown_widget = 0;
                     require(sdk_lfo_element_label(0, slot, 1, 104) != nullptr);
                     require(named_group == 0 && named_slot == slot && named_flag == 1);
+                    require(sdk_lfo_label(0, slot, 1) != nullptr && named_slot == slot);
                     require(shown_widget == (slot >= 4 ? 104u : 0u));
                 }
                 value = sdk_lfo_step(track, index, value, up);
@@ -175,14 +176,34 @@ int main() {
         sdk_lfo_element_label(other_group, 7, 0, 104);
         require(shown_widget == 0 && named_group == other_group && named_slot == 7 && named_flag == 0);
     }
-    engine = 41; // Five parameters: undeclared slots must not reveal a widget.
-    for (u32 slot : {5u, 6u, 7u, 8u, 0xffffffffu}) {
+    // Retained selectors from a larger machine must name, animate and
+    // modulate the same last declared slot on the new machine.
+    for (u32 count = 5; count <= 7; ++count) {
+        engine = 36 + count;
+        const u32 last = count - 1;
+        const u32 control = sdk_lfo_machines[count - 4].controls[last];
+        for (u32 slot = count; slot < 8; ++slot) {
+            require(sdk_lfo_icon_slot(slot, 1) == control);
+            sdk_lfo_icon_slide(101, 102, -1000 * static_cast<i32>(slot), 153, 0, slot);
+            require(icon_target == -1000 * static_cast<i32>(control));
+            shown_widget = 0;
+            sdk_lfo_element_label(0, slot, 1, 104);
+            require(shown_widget == 104 && named_slot == last);
+            sdk_lfo_label(0, slot, 1);
+            require(named_slot == last);
+            route(0, static_cast<i32>((slot << 28) + 0x08000000u), last);
+        }
+    }
+    engine = 41;
+    for (u32 slot : {8u, 0xffffffffu}) {
         require(sdk_lfo_icon_slot(slot, 1) == slot);
         sdk_lfo_icon_slide(101, 102, -7000, 153, 0, slot);
         require(icon_target == -7000);
         shown_widget = 0;
         sdk_lfo_element_label(0, slot, 1, 104);
         require(shown_widget == 0 && named_slot == slot);
+        sdk_lfo_label(0, slot, 1);
+        require(named_slot == slot);
     }
     engine = 44;
     for (u32 other : {0u, 4u, 5u, 6u, 7u}) {

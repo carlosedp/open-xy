@@ -32,7 +32,7 @@ version is rejected. The output differs from stock in exactly these places:
 | Relocated tables | 22 | Moves the effect records (63), engine records (63) and screen slots (128) into the last 8 KiB of the reservation |
 | Screen order | 1 | Paints a selected owned synth page before stock overlays |
 | Synth and effect controls | 5 | Lets an encoder press on an owned synth's page select an alternate parameter, which its turns and titles then follow; scales fine turns on owned synth and send-effect pages; names an owned effect's division values on the send page |
-| LFO destinations | 13 | Selects and modulates all declared engine parameters on owned instrument machines with five to eight parameters, using their assigned encoder icons |
+| LFO destinations | 15 | Selects and modulates all declared engine parameters on owned instrument machines with five to eight parameters, using their assigned encoder icons |
 | Display note releases | 2 | Observes both stock note-off map updates while preserving their original calls |
 | Per-voice profiling | 10 optional | Bypasses diagnostic timing in both stock voice renderers when built with profiling off |
 | Startup label | 1 | Shows `OPEN <version>-1.2.0` at boot, `<version>` from [`VERSION`](../VERSION), through the stock startup text renderer |
@@ -212,6 +212,10 @@ visibility for those slots. Its initializer's offset calculation (`8d53ecc0`)
 uses the same mapping after stock stores the full slot, so reopening the page also shows the
 correct icon. The full slot still selects the label and audio
 destination; only the strip's scroll position is remapped.
+The three name calls (`8d53f3e8`, `8d5404b6`, `8d542da8`) and icon mapping
+clamp retained selectors beyond the declared count to the last slot, just
+as audio does. Changing from a larger machine therefore keeps a valid name
+and icon until the user edits the destination.
 The [API guide](api.md#alternate-controls) describes saved-selector compatibility.
 
 ## Sample engines
