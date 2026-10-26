@@ -80,3 +80,12 @@ class Lfo(unittest.TestCase):
                 self.assertEqual(target, expected[address][1])
             seen.add(address)
         self.assertEqual(seen, set(expected))
+        # The engine-group audio hook follows a store of the folded index.
+        # The same scratch word is read later as publication argument R1.
+        for address, before in (
+            (0x11a03f10, '00d80484584a0202'),
+            (0x11a042d8, '00d80484584a0100'),
+            (0x11a042e8, '00de4d8d60720000'),
+        ):
+            offset = mapped_offset(ldr(data), address, 8)
+            self.assertEqual(data[offset:offset + 8].hex(), before)

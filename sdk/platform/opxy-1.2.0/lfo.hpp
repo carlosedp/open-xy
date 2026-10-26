@@ -23,6 +23,7 @@ void show(u32 widget);
 i32 step(u32 track, u32 index, i32 value, const i32* event);
 i32 value(u32 project, u32 track, u32 index);
 u32 publish(u32 project, u32 track, u32 index, i32 value);
+void modulation_slot(u32 index);
 void modulate(u32 project, u32 track, u32 index, i32 amount);
 }
 }}

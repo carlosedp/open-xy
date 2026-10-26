@@ -25,6 +25,11 @@ i32 value(u32 project, u32 track, u32 index) {
 u32 publish(u32 project, u32 track, u32 index, i32 value) {
     return stock<u32(u32, u32, u32, i32)>(0x8d5ab258)(project, track, index, value);
 }
+void modulation_slot(u32 index) {
+    // 11a03f10 stores the destination here; 11a042d8 loads it for the
+    // existing 8d4d7260 publication. Keep stock's timing and amount intact.
+    *reinterpret_cast<volatile u32*>(0x84044a58) = index;
+}
 void modulate(u32 project, u32 track, u32 index, i32 amount) {
     stock<void(u32, u32, u32, i32)>(0x8d5182d4)(project, track, index, amount);
 }

@@ -102,6 +102,9 @@ void sdk_lfo_modulate(u32 project, u32 track, u32 index, i32 amount, u32 selecto
     if (count) {
         index = selector_q23 >> 20;
         if (index >= count) index = count - 1;
+        // Stock saved the folded slot before this call. Its later telemetry
+        // publication must name the same full slot as the audio modulation.
+        lfo::modulation_slot(index);
     }
     lfo::modulate(project, track, index, amount);
 }

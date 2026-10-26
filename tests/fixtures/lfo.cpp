@@ -25,6 +25,7 @@ static u32 named_group, named_slot, named_flag, shown_widget;
 static bool audio;
 static i32 stored, published;
 static u32 value_reads, publications;
+static u32 telemetry_slot, telemetry_writes;
 namespace opxy { namespace platform { namespace lfo {
 u32 gui_engine(u32 track) { require(!audio && track == expected_track); ++gui_reads; return engine; }
 u32 audio_engine(u32 track) { require(audio && track == expected_track); return engine; }
@@ -53,6 +54,11 @@ u32 publish(u32 project, u32 track, u32, i32 value) {
     ++publications; published = value;
     return 456;
 }
+void modulation_slot(u32 index) {
+    require(audio);
+    telemetry_slot = index;
+    ++telemetry_writes;
+}
 void modulate(u32 project, u32 track, u32 index, i32 value) {
     require(audio && project == 123 && track == expected_track);
     routed = index; amount = value;
@@ -61,8 +67,19 @@ void modulate(u32 project, u32 track, u32 index, i32 value) {
 static void route(u32 track, i32 value, u32 expected) {
     audio = true;
     const u32 before = gui_reads;
+    const u32 writes = telemetry_writes;
+    const u32 stock_slot = static_cast<u32>(value) >> 29;
+    telemetry_slot = stock_slot; // the stock store immediately before the hook
     sdk_lfo_modulate(123, track, static_cast<u32>(value) >> 29, -1234, static_cast<u32>(value) >> 8);
     require(routed == expected && amount == -1234 && gui_reads == before);
+    require(telemetry_slot == expected);
+    const bool owned = track < 8 && engine >= 41 && engine <= 44 && ownership == 1;
+    require(telemetry_writes == writes + (owned ? 1 : 0));
+    // Stock packs the slot into the high word, and the GUI matches it against
+    // raw parameter slots before the engine page maps them to shown encoders.
+    const u32 packed = (telemetry_slot << 16) | 0x1234;
+    for (u32 slot = 0; slot < 8; ++slot)
+        require((slot == (packed >> 16)) == (slot == expected));
     audio = false;
 }
 int main() {

@@ -186,6 +186,10 @@ The engine-group audio call (`11a03f20`) takes the full selector from R4,
 decodes the same slot and delegates to stock's modulation function, which
 still owns saturation and restoration. This path reads the audio engine
 table and record ownership only; it does not call GUI or project getters.
+It also corrects stock's destination scratch word (`84044a58`) before the
+existing modulation telemetry publication (`11a042e8`). The GUI therefore
+animates the same full parameter slot that audio modulates, while stock
+retains the publication timing, amount and selected-track filtering.
 Other destination groups and stock engines retain their original routing.
 Three icon-strip animation calls (`8d53f676`, `8d540b6e`, `8d5431ca`)
 map slots 4..7 to their declared encoder using the caller's decoded group
