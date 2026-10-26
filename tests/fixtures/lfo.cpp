@@ -20,12 +20,26 @@ const LfoMachine sdk_lfo_machines[] = {
 const u32 sdk_lfo_machine_count = 5;
 static u32 engine, kind, group, routed, gui_reads, delegated, expected_track;
 static i32 amount;
+static i32 icon_target;
+static u32 named_group, named_slot, named_flag, shown_widget;
 static bool audio;
 namespace opxy { namespace platform { namespace lfo {
 u32 gui_engine(u32 track) { require(!audio && track == expected_track); ++gui_reads; return engine; }
 u32 audio_engine(u32 track) { require(audio && track == expected_track); return engine; }
 u32 type(u32 track) { require(!audio && track == expected_track); return kind; }
 u32 group_value(u32 track) { require(!audio && track == expected_track); return group; }
+u32 selected_track() { require(!audio); return expected_track; }
+u32 animate(u32 controller, u32 position, i32 target, u32 duration) {
+    require(!audio && controller == 101 && position == 102 && duration == 153);
+    icon_target = target;
+    return 103;
+}
+const char* name(u32 group, u32 slot, u32 flag) {
+    require(!audio);
+    named_group = group; named_slot = slot; named_flag = flag;
+    return "slot name";
+}
+void show(u32 widget) { require(!audio); shown_widget = widget; }
 i32 step(u32, u32, i32 value, const i32*) { ++delegated; return value; }
 void modulate(u32 project, u32 track, u32 index, i32 value) {
     require(audio && project == 123 && track == expected_track);
@@ -55,6 +69,12 @@ int main() {
                     if (slot) value = sdk_lfo_step(track, index, value, up);
                     require(static_cast<u32>(value) >> 28 == slot);
                     route(track, value, slot);
+                    require(sdk_lfo_icon_slide(101, 102, -13312 * static_cast<i32>(slot), 153, 0, slot) == 103);
+                    require(icon_target == -13312 * static_cast<i32>(slot % 4));
+                    shown_widget = 0;
+                    require(sdk_lfo_element_label(0, slot, 1, 104) != nullptr);
+                    require(named_group == 0 && named_slot == slot && named_flag == 1);
+                    require(shown_widget == (slot >= 4 ? 104u : 0u));
                 }
                 value = sdk_lfo_step(track, index, value, up);
                 require(static_cast<u32>(value) >> 28 == count - 1);
@@ -89,9 +109,30 @@ int main() {
             sdk_lfo_step(0, 27, 0, up);
             require(delegated == calls + (owned ? 0 : 1));
             route(0, 0x78000000, owned ? 7 : 3);
+            sdk_lfo_icon_slide(101, 102, -7000, 153, 0, 7);
+            require(icon_target == (owned ? -3000 : -7000));
+            shown_widget = 0;
+            sdk_lfo_element_label(0, 7, 1, 104);
+            require(shown_widget == (owned ? 104u : 0u) && named_slot == 7);
         }
     }
     engine = 44; ownership = 1;
+    for (u32 other_group : {1u, 2u, 3u, 0xffffffffu}) {
+        sdk_lfo_icon_slide(101, 102, -7000, 153, other_group, 7);
+        require(icon_target == -7000);
+        shown_widget = 0;
+        sdk_lfo_element_label(other_group, 7, 0, 104);
+        require(shown_widget == 0 && named_group == other_group && named_slot == 7 && named_flag == 0);
+    }
+    engine = 41; // Five parameters: undeclared slots must not reveal a widget.
+    for (u32 slot : {5u, 6u, 7u, 8u, 0xffffffffu}) {
+        sdk_lfo_icon_slide(101, 102, -7000, 153, 0, slot);
+        require(icon_target == -7000);
+        shown_widget = 0;
+        sdk_lfo_element_label(0, slot, 1, 104);
+        require(shown_widget == 0 && named_slot == slot);
+    }
+    engine = 44;
     for (u32 other : {0u, 4u, 5u, 6u, 7u}) {
         kind = other;
         const u32 calls = delegated;
@@ -105,5 +146,7 @@ int main() {
         sdk_lfo_step(track, 27, 123, up);
         require(delegated == calls + 1);
         route(track, 0x78000000, 3);
+        sdk_lfo_icon_slide(101, 102, -7000, 153, 0, 7);
+        require(icon_target == -7000);
     }
 }

@@ -18,7 +18,7 @@ class Lfo(unittest.TestCase):
     run_fixture = services.SampleServices.run_fixture
 
     @unittest.skipUnless(services.HOST_CXX, 'No working host C++ compiler')
-    def test_every_declared_destination_reaches_its_audio_word(self):
+    def test_destinations_keep_full_audio_slots_and_repeat_knob_icons(self):
         self.run_fixture('lfo', ('sdk/platform/opxy-1.2.0/lfo.cpp',))
 
     def test_metadata_includes_instrument_records_and_stable_slot_names(self):
@@ -39,7 +39,7 @@ class Lfo(unittest.TestCase):
         self.assertIn('? labels[index] : ""', voice)
 
     @unittest.skipUnless(os.environ.get('OPXY_TEST_STOCK_OS'), 'Private stock input not supplied')
-    def test_hooks_replace_only_the_reviewed_stock_calls(self):
+    def test_hooks_match_the_reviewed_stock_instructions(self):
         data = Path(os.environ['OPXY_TEST_STOCK_OS']).read_bytes()
         profile = config()
         self.assertEqual(sha(data), profile['stock_sha256'])
@@ -52,6 +52,11 @@ class Lfo(unittest.TestCase):
             0x8d5ab8ce: ('sdk_lfo_step', 0x8d5ab618),
             0x11a03f20: ('sdk_lfo_audio', 0x8d5182d4),
             0x8d545b2e: ('sdk_synth_title', 0x8d5065fc),
+            0x8d53f676: ('sdk_lfo_element_icon', 0x8d5fffa4),
+            0x8d540b6e: ('sdk_lfo_random_icon', 0x8d5fffa4),
+            0x8d5431ca: ('sdk_lfo_value_icon', 0x8d5fffa4),
+            0x8d53f3e8: ('sdk_lfo_element_name', 0x8d4d8940),
+            0x8d53ecc0: ('sdk_lfo_element_initial_icon', None),
         }
         seen = set()
         for patch in profile['patches']:
@@ -64,7 +69,13 @@ class Lfo(unittest.TestCase):
             self.assertEqual(offset, int(patch['file_offset'], 16))
             self.assertEqual(patch['symbol'], expected[address][0])
             self.assertTrue(patch['call'])
-            target = absolute_target(before) if len(before) == 8 else decode_branch(address, before)[0]
-            self.assertEqual(target, expected[address][1])
+            if expected[address][1] is None:
+                # Element stores the raw destination before calculating the
+                # icon offset. The hook replays only that offset calculation.
+                self.assertEqual(before.hex(), '504f79c20820b14f')
+                self.assertEqual(data[offset - 8:offset].hex(), '07cc08c2a8b10000')
+            else:
+                target = absolute_target(before) if len(before) == 8 else decode_branch(address, before)[0]
+                self.assertEqual(target, expected[address][1])
             seen.add(address)
         self.assertEqual(seen, set(expected))

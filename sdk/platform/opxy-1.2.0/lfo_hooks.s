@@ -19,3 +19,97 @@ sdk_lfo_audio:
     UNLINK;
     RTS;
 .size sdk_lfo_audio, .-sdk_lfo_audio
+
+/* Each GUI caller already decoded its group and raw destination into frame
+ * locals. Preserve the animation's four C arguments and pass those locals
+ * as arguments five and six. LINK saves the caller's FP at [FP].
+ */
+.extern sdk_lfo_icon_slide
+.global sdk_lfo_element_icon
+.type sdk_lfo_element_icon, STT_FUNC
+sdk_lfo_element_icon:
+    LINK 0;
+    SP += -24;
+    R3 = [FP + 20];
+    [SP + 12] = R3;
+    P0 = [FP];
+    R3 = [P0 - 0x34];
+    [SP + 16] = R3;
+    R3 = [P0 - 0x38];
+    [SP + 20] = R3;
+    CALL sdk_lfo_icon_slide;
+    SP += 24;
+    UNLINK;
+    RTS;
+.size sdk_lfo_element_icon, .-sdk_lfo_element_icon
+
+.global sdk_lfo_random_icon
+.type sdk_lfo_random_icon, STT_FUNC
+sdk_lfo_random_icon:
+    LINK 0;
+    SP += -24;
+    R3 = [FP + 20];
+    [SP + 12] = R3;
+    P0 = [FP];
+    R3 = [P0 - 0x28];
+    [SP + 16] = R3;
+    R3 = [P0 - 0x30];
+    [SP + 20] = R3;
+    CALL sdk_lfo_icon_slide;
+    SP += 24;
+    UNLINK;
+    RTS;
+.size sdk_lfo_random_icon, .-sdk_lfo_random_icon
+
+.global sdk_lfo_value_icon
+.type sdk_lfo_value_icon, STT_FUNC
+sdk_lfo_value_icon:
+    LINK 0;
+    SP += -24;
+    R3 = [FP + 20];
+    [SP + 12] = R3;
+    P0 = [FP];
+    R3 = [P0 - 0x38];
+    [SP + 16] = R3;
+    R3 = [P0 - 0x30];
+    [SP + 20] = R3;
+    CALL sdk_lfo_icon_slide;
+    SP += 24;
+    UNLINK;
+    RTS;
+.size sdk_lfo_value_icon, .-sdk_lfo_value_icon
+
+/* 8d53f3e8: group, raw slot and flag are the stock name arguments. P3
+ * holds the Element page; its +0x58 word is the knob-strip widget.
+ */
+.extern sdk_lfo_element_label
+.global sdk_lfo_element_name
+.type sdk_lfo_element_name, STT_FUNC
+sdk_lfo_element_name:
+    LINK 0;
+    SP += -16;
+    R3 = [P3 + 0x58];
+    [SP + 12] = R3;
+    CALL sdk_lfo_element_label;
+    SP += 16;
+    UNLINK;
+    RTS;
+.size sdk_lfo_element_name, .-sdk_lfo_element_name
+
+/* 8d53ecc0: Element initializes its strip before the first animation. The
+ * preceding instruction already saved the full slot at [P5 + 0x18]. R7 is
+ * sdk_lfo_range's ownership/group result. Wrap only the icon offset, then
+ * replay the displaced fixed-point multiply; R1 and R0 remain its outputs.
+ */
+.global sdk_lfo_element_initial_icon
+.type sdk_lfo_element_initial_icon, STT_FUNC
+sdk_lfo_element_initial_icon:
+    CC = R7 == 0;
+    IF CC JUMP .Llfo_initial_stock;
+    BITCLR(R0, 2);
+.Llfo_initial_stock:
+    R0 <<= 10;
+    (R1:0) = R1 * R0 (IS, NS);
+    R1 <<= 22;
+    RTS;
+.size sdk_lfo_element_initial_icon, .-sdk_lfo_element_initial_icon

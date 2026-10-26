@@ -32,7 +32,7 @@ version is rejected. The output differs from stock in exactly these places:
 | Relocated tables | 22 | Moves the effect records (63), engine records (63) and screen slots (128) into the last 8 KiB of the reservation |
 | Screen order | 1 | Paints a selected owned synth page before stock overlays |
 | Synth and effect controls | 5 | Lets an encoder press on an owned synth's page select an alternate parameter, which its turns and titles then follow; scales fine turns on owned synth and send-effect pages; names an owned effect's division values on the send page |
-| LFO destinations | 7 | Selects and modulates all declared engine parameters on owned instrument machines with five to eight parameters |
+| LFO destinations | 12 | Selects and modulates all declared engine parameters on owned instrument machines with five to eight parameters, repeating the four knob icons for extra destinations |
 | Display note releases | 2 | Observes both stock note-off map updates while preserving their original calls |
 | Startup label | 1 | Shows `OPEN <version>-1.2.0` at boot, `<version>` from [`VERSION`](../VERSION), through the stock startup text renderer |
 | Module | 1 record | One loader block holding the linked module |
@@ -183,6 +183,13 @@ decodes the same slot and delegates to stock's modulation function, which
 still owns saturation and restoration. This path reads the audio engine
 table and record ownership only; it does not call GUI or project getters.
 Other destination groups and stock engines retain their original routing.
+Three icon-strip animation calls (`8d53f676`, `8d540b6e`, `8d5431ca`)
+repeat the four knob icons for slots 4..7 using the caller's decoded group
+and slot. Element's name call (`8d53f3e8`) also restores the strip's
+visibility for those slots. Its initializer's offset calculation (`8d53ecc0`)
+wraps after stock stores the full slot, so reopening the page also shows the
+correct icon. The full slot still selects the label and audio
+destination; only the strip's scroll position wraps.
 The [API guide](api.md#alternate-controls) describes saved-selector compatibility.
 
 ## Sample engines

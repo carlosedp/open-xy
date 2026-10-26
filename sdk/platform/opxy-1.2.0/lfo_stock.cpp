@@ -5,6 +5,14 @@ namespace opxy { namespace platform { namespace lfo {
 u32 gui_engine(u32 track) { return track_engine(track); }
 u32 audio_engine(u32 track) { return word(0x11b01c48 + track * 4); }
 u32 type(u32 track) { return stock<u32(u32)>(0x8d585fb8)(track); }
+u32 selected_track() { return stock<u32()>(0x8d4d78cc)(); }
+u32 animate(u32 controller, u32 position, i32 target, u32 duration) {
+    return stock<u32(u32, u32, i32, u32)>(0x8d5fffa4)(controller, position, target, duration);
+}
+const char* name(u32 group, u32 slot, u32 flag) {
+    return stock<const char*(u32, u32, u32)>(0x8d4d8940)(group, slot, flag);
+}
+void show(u32 widget) { *reinterpret_cast<volatile u8*>(widget + 0x5c) = 0; }
 u32 group_value(u32 track) {
     return stock<u32(u32, u32, u32)>(0x8d5aac40)(0x86bd9f38, track, 26);
 }

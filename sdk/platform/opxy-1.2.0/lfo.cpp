@@ -11,6 +11,11 @@ u32 extended(u32 engine) {
     }
     return 0;
 }
+bool extra_icon(u32 group, u32 slot) {
+    if (group != 0 || slot < page_controls || slot >= parameter_slots) return false;
+    const u32 track = lfo::selected_track();
+    return track < 8 && slot < extended(lfo::gui_engine(track));
+}
 }
 
 // All four stock display callers use this result to choose eight positions
@@ -18,6 +23,22 @@ u32 extended(u32 engine) {
 // returns zero; keep that result outside an owned engine's destination group.
 u32 sdk_lfo_range(u32 track, u32 group, u32) {
     return track < 8 && group == 0 && extended(lfo::gui_engine(track)) ? 1 : 0;
+}
+
+// Stock scrolls a strip containing four knob icons by -spacing * slot.
+// The three callers pass their already-decoded group and full destination;
+// only the icon scroll repeats. Labels, cached selection and audio keep slot.
+u32 sdk_lfo_icon_slide(u32 controller, u32 position, i32 target, u32 duration, u32 group, u32 slot) {
+    if (extra_icon(group, slot))
+        target = (target / static_cast<i32>(slot)) * static_cast<i32>(slot % page_controls);
+    return lfo::animate(controller, position, target, duration);
+}
+
+// Element additionally hides its strip when slot > 3, before naming the
+// destination. Restore visibility for a declared extra slot; name it as-is.
+const char* sdk_lfo_element_label(u32 group, u32 slot, u32 flag, u32 widget) {
+    if (extra_icon(group, slot)) lfo::show(widget);
+    return lfo::name(group, slot, flag);
 }
 
 i32 sdk_lfo_step(u32 track, u32 index, i32 value, const i32* event) {
