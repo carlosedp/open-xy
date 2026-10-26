@@ -1,4 +1,4 @@
-// SDK native voice adapter for every synth. Stock creates one machine object per
+// SDK native voice adapter for synthesis drum kits. Stock creates one machine object per
 // voice index, 0..255, and calls it through an 11-entry method table, never
 // checking for a missing one. Each index gets a small handle, and the machine's
 // voiceCapacity voices go to handles as their notes start: a free voice, or the
@@ -73,6 +73,13 @@ int @PREFIX@_start(void* self, opxy::u32 key) {
     @NAMESPACE@::start(slot->voice, shared, id);
     return 0;
 }
+// Stock's drum constructor calls +20 at 8d51a358 with key, velocity,
+// region and track parameters. The contributor's start callback needs the key
+// captured by the SDK and its stable owner, not stock's extra arguments.
+static int start_drum(void* self, opxy::u32 key, opxy::u32,
+                      const opxy::i32*, const opxy::i32*) {
+    return @PREFIX@_start(self, key);
+}
 int @PREFIX@_destroy(void* self) {
     Handle* handle = static_cast<Handle*>(self);
     if (Slot* slot = held(handle)) {
@@ -91,12 +98,14 @@ void* @PREFIX@_factory(opxy::u32 index, opxy::u32 track) {
     handle->slot = 0;
     return handle;
 }
-int @PREFIX@_render(void* self, opxy::i32* output, const opxy::i32* parameters) {
+// The drum classifier sets voice+0x4e, selecting 8d51a684. Its call at
+// 8d51a96a uses +12 with the payload in R2 and track parameters on the stack.
+int @PREFIX@_render(void* self, opxy::i32* output, const opxy::i32* region,
+                   const opxy::i32* parameters) {
     if (Slot* slot = held(static_cast<Handle*>(self))) {
         const Handle* handle = static_cast<const Handle*>(self);
         opxy::u8 raw[8];
         @NAMESPACE@::drum_defaults(handle->key, raw);
-        const opxy::i32* region = *reinterpret_cast<const opxy::i32* const volatile*>(0x84ebba70);
         if (region) opxy::platform::drum_unpack(region + 1, raw);
         if (raw[0] >= @MODEL_COUNT@) @NAMESPACE@::drum_defaults(handle->key, raw);
         opxy::i32 live[8];
@@ -111,10 +120,20 @@ int @PREFIX@_render(void* self, opxy::i32* output, const opxy::i32* parameters) 
             live[i] = i == 0 ? opxy::platform::drum_model_q31(value, @MODEL_COUNT@)
                 : value == 127 ? 0x7fffffff : value << 24;
         }
-        @NAMESPACE@::render(slot->voice, shared, slot->owner, output, live, increments);
+        // Unlike the normal synth renderer, 8d51a850..854 publishes phase
+        // increments shifted right by 16. Restore the public Pitch units.
+        opxy::u32 pitch[opxy::block_frames];
+        for (unsigned i = 0; i < opxy::block_frames; ++i) pitch[i] = increments[i] << 16;
+        @NAMESPACE@::render(slot->voice, shared, slot->owner, output, live, pitch);
     } else {
         for (unsigned i = 0; i < opxy::block_frames; ++i) output[i] = 0;
     }
+    return 0;
+}
+// +8 belongs to stock's other renderer. Never leave its output scratch stale
+// if it is called without the drum payload ABI.
+static int render_normal(void*, opxy::i32* output, const opxy::i32*) {
+    for (unsigned i = 0; i < opxy::block_frames; ++i) output[i] = 0;
     return 0;
 }
 static int zero() { return 0; }
@@ -135,8 +154,8 @@ const char* @PREFIX@_drum_model_name(opxy::u32 model) { return @NAMESPACE@::mode
 opxy::u32 @PREFIX@_drum_count(opxy::u32 model) { return @NAMESPACE@::parameter_count(model); }
 const void* const @PREFIX@_vtable[11] = {
     reinterpret_cast<const void*>(&@PREFIX@_destroy), reinterpret_cast<const void*>(&@PREFIX@_destroy),
-    reinterpret_cast<const void*>(&@PREFIX@_render), reinterpret_cast<const void*>(&noop),
-    reinterpret_cast<const void*>(&@PREFIX@_start), reinterpret_cast<const void*>(&noop),
+    reinterpret_cast<const void*>(&render_normal), reinterpret_cast<const void*>(&@PREFIX@_render),
+    reinterpret_cast<const void*>(&@PREFIX@_start), reinterpret_cast<const void*>(&start_drum),
     reinterpret_cast<const void*>(&zero), reinterpret_cast<const void*>(&noop),
     reinterpret_cast<const void*>(&zero), reinterpret_cast<const void*>(&zero),
     reinterpret_cast<const void*>(opxy::platform::kVoiceDefaultMethod)

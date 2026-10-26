@@ -14,8 +14,8 @@ from test_sample_services import HOST_CXX
 ROOT = Path(__file__).resolve().parents[1]
 CORE = '''#pragma once
 #include <opxy/audio.hpp>
-extern const opxy::i32* fixture_region;
 extern opxy::i32 captured[8];
+extern opxy::u32 fixture_pitch[opxy::block_frames], captured_pitch[opxy::block_frames];
 extern unsigned destroyed[257], initialized[257], started[257];
 namespace probe {
 struct Voice { opxy::u32 owner; };
@@ -35,8 +35,9 @@ inline const char* parameter_name(opxy::u32, opxy::u32) { return "parameter"; }
 inline const char* model_name(opxy::u32) { return "model"; }
 inline opxy::u32 parameter_count(opxy::u32) { return 8; }
 inline void render(Voice& v, Shared&, opxy::u32 id, opxy::Output output,
-                   opxy::Parameters parameters, opxy::Pitch) {
+                   opxy::Parameters parameters, opxy::Pitch pitch) {
     for (unsigned i = 0; i < 8; ++i) captured[i] = parameters[i];
+    for (unsigned i = 0; i < opxy::block_frames; ++i) captured_pitch[i] = pitch[i];
     for (unsigned i = 0; i < opxy::block_frames; ++i) output[i] = v.owner == id ? id : -1;
 }
 }
@@ -46,6 +47,7 @@ DRIVER = r'''#include "voice.cpp"
 #include <cstdint>
 const opxy::i32* fixture_region;
 opxy::i32 captured[8];
+opxy::u32 fixture_pitch[opxy::block_frames], captured_pitch[opxy::block_frames];
 unsigned destroyed[257], initialized[257], started[257];
 volatile opxy::i32 sdk_sample_drum_octaves[8];
 extern "C" const char probe_engine_id[] = "probe";
@@ -54,16 +56,18 @@ const char* sdk_drum_title(opxy::u32, opxy::u32) { return "parameter"; }
 namespace {
 void* objects[256];
 opxy::i32 offsets[8];
-typedef int (*Start)(void*, opxy::u32);
+typedef int (*Start)(void*, opxy::u32, opxy::u32, const opxy::i32*, const opxy::i32*);
 typedef int (*End)(void*);
-typedef int (*Render)(void*, opxy::i32*, const opxy::i32*);
+typedef int (*Render)(void*, opxy::i32*, const opxy::i32*, const opxy::i32*);
 const void* const* table(unsigned id) { return *static_cast<const void* const* const*>(objects[id]); }
-void note(unsigned id, unsigned key) { reinterpret_cast<Start>(const_cast<void*>(table(id)[4]))(objects[id], key); }
+void note(unsigned id, unsigned key) {
+    reinterpret_cast<Start>(const_cast<void*>(table(id)[5]))(objects[id], key, 100, fixture_region, offsets);
+}
 void end(unsigned id) { reinterpret_cast<End>(const_cast<void*>(table(id)[0]))(objects[id]); }
 opxy::i32 rendered(unsigned id, const opxy::i32* params = offsets) {
     opxy::i32 output[opxy::block_frames];
     for (auto& sample : output) sample = -9;
-    reinterpret_cast<Render>(const_cast<void*>(table(id)[2]))(objects[id], output, params);
+    reinterpret_cast<Render>(const_cast<void*>(table(id)[3]))(objects[id], output, fixture_region, params);
     for (auto sample : output) if (sample != output[0]) return -2;
     return output[0];
 }
@@ -71,6 +75,7 @@ unsigned model() { return static_cast<unsigned>((std::uint64_t(captured[0]) * 30
 unsigned raw(unsigned slot) { return static_cast<unsigned>(captured[slot]) >> 24; }
 }
 int main() {
+    for (unsigned i = 0; i < opxy::block_frames; ++i) fixture_pitch[i] = i * 1040;
     for (unsigned i = 0; i < 8; ++i) offsets[i] = 0x40000000;
     for (unsigned i = 0; i < 256; ++i) CHECK(objects[i] = probe_factory(i, i % 8));
     CHECK(!probe_factory(256, 0));
@@ -79,9 +84,17 @@ int main() {
     sdk_sample_drum_octaves[1] = 1;
     note(1, 53);
     CHECK(rendered(1) == 2 && model() == 5 && raw(7) == 65);
+    for (unsigned i = 0; i < opxy::block_frames; ++i)
+        CHECK(captured_pitch[i] == fixture_pitch[i] * 65536u);
     CHECK(initialized[2] == 1 && started[2] == 1);
     note(0, 53);
     CHECK(rendered(0) == 1 && model() == 23 && raw(7) == 53);
+    // A call through the other renderer's +8 entry must overwrite stale scratch.
+    opxy::i32 silent[opxy::block_frames];
+    for (auto& sample : silent) sample = -9;
+    typedef int (*NormalRender)(void*, opxy::i32*, const opxy::i32*);
+    reinterpret_cast<NormalRender>(const_cast<void*>(table(0)[2]))(objects[0], silent, offsets);
+    for (auto sample : silent) CHECK(sample == 0);
     opxy::i32 payload[8] = {};
     opxy::u8 controls[8];
     fixture_region = payload;
@@ -148,11 +161,13 @@ class DrumVoices(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             source = generate_voice(folder, machine)
-            # Only the firmware's published payload pointer needs a host replacement.
-            native_read = '*reinterpret_cast<const opxy::i32* const volatile*>(0x84ebba70)'
+            # The actual +12 ABI transports its payload directly; no global
+            # payload-pointer substitution is needed to execute the adapter.
             generated = source.read_text(encoding='utf-8')
-            self.assertEqual(generated.count(native_read), 1)
-            source.write_text(generated.replace(native_read, 'fixture_region'), encoding='utf-8')
+            self.assertNotIn('0x84ebba70', generated)
+            native_pitch = 'reinterpret_cast<const opxy::u32*>(opxy::platform::kPitchIncrements)'
+            self.assertEqual(generated.count(native_pitch), 1)
+            source.write_text(generated.replace(native_pitch, 'fixture_pitch'), encoding='utf-8')
             for name, content in (('core.h', CORE), ('engine.cpp', ENGINE), ('test.cpp', DRIVER)):
                 (folder / name).write_text(content, encoding='utf-8')
             binary = folder / ('test.exe' if os.name == 'nt' else 'test')

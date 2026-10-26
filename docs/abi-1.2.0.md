@@ -385,8 +385,20 @@ The SDK aliases only the local Drumline classification branches to engine 4;
 stock and occupied registrations retain their behavior. Ten exact hooks cover
 the drum predicate, region lookup, editor dispatch and preset import/export.
 The shared sample note hook selects the Drumline payload only for owned kits.
-The mono render path uses the ordinary synth vtable; the kit never calls
-stock Drumline synthesis.
+The classifier result is stored in voice byte `+0x4e` at `8d51a258`.
+The renderer chooser at `8d51afba` selects the drum renderer `8d51a684`
+when that byte is nonzero. Its call at `8d51a96a` uses vtable `+12` with
+`(self, output, region, track_parameters)`; the fourth argument is on the
+stack. The payload is passed directly, rather than through the normal
+renderer's published region pointer. The constructor calls vtable `+20`
+at `8d51a358` with `(self, key, velocity, region, track_parameters)` to start
+the note. Both calls have dedicated SDK adapters. Vtable `+32` returns zero
+for mono output; the unused normal-render entry `+8` fills its output with
+silence. The kit never calls stock Drumline synthesis.
+The drum renderer writes the pitch buffer at `11904b00` with each phase
+increment shifted right by 16 (`8d51a850`–`8d51a854`). The SDK expands those
+64 values back to the public `Pitch` units before the contributor callback;
+the lower 16 bits are zero because stock has already quantized them.
 
 Each key's four parameter words store 60 bits that stock exports as positive
 Q15 integers and restores with a left shift of 16. The SDK packs eight 7-bit
