@@ -67,7 +67,7 @@ test('profiling defaults on; disabling it changes only the reviewed diagnostic h
   }
   const restored = off.slice(); restored.set(on.subarray(32, 48), 32);
   assert.deepEqual(restored, on);
-  for (const image of [on, off]) assert.deepEqual(await recoverFirmware(kit, image), {stock, selected:['a']});
+  for (const image of [on, off]) assert.deepEqual(await recoverFirmware(kit, image), {stock, selected:['a'], extensions:[]});
 });
 
 test('profiling recovery rejects mixed modes, hook corruption, and altered linked code', async () => {

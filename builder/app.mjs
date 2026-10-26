@@ -19,7 +19,7 @@ $('risk-acknowledgement').disabled = !browserAllowed;
 $('risk-continue').disabled = true;
 const colors = ['var(--machine-1)', 'var(--machine-2)', 'var(--machine-3)', 'var(--machine-4)'];
 const kib = n => (n / 1024).toFixed(1) + ' KiB';
-let kit, stock, catalog, selected = [], selectedExtensions = [], inspected, linked, downloadUrl, built, layout, revision = 0;
+let kit, stock, catalog, selected = [], selectedExtensions = [], inspected, inspectedExtension, linked, downloadUrl, built, layout, revision = 0;
 // The machine numbers of this person's firmware (core.mjs assignNumbers): from their
 // last build here, or a layout.json they load. Kept in this browser as a convenience;
 // the layout.json in every download is the record.
@@ -47,13 +47,14 @@ function invalidate() {
 }
 function navigate(step) {
   stopAudio();
-  if (machinePreview && step !== 2) {
+  if (machinePreview && ![2, 3].includes(step)) {
     machinePreview = false;
     history.replaceState(null, '', location.pathname + location.search);
     ready();
     if (!acknowledged) { showEntryGate(); return; }
   }
   wizard.navigate(step);
+  if ([2, 3].includes(step)) $(step === 2 ? 'machine-capacity-host' : 'extension-capacity-host').append($('selection-capacity'));
   document.querySelectorAll('[data-page]').forEach(p => p.hidden = Number(p.dataset.page) !== step);
   document.querySelectorAll('.steps button').forEach(b => {
     if (Number(b.dataset.step) === step) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
@@ -64,7 +65,7 @@ function navigate(step) {
 function ready() {
   $('choose').disabled = !(kit && stock);
   document.querySelector('.steps [data-step="2"]').disabled = !(kit && (stock || machinePreview));
-  $('choose-extensions').disabled = !(stock && selected.length);
+  $('choose-extensions').disabled = !(kit && selected.length && (stock || machinePreview));
   document.querySelector('.steps [data-step="3"]').disabled = $('choose-extensions').disabled;
   $('build').disabled = machinePreview || !(stock && linked);
 }
@@ -87,7 +88,7 @@ function showEntryGate() {
   $('builder-workspace').inert = true;
 }
 function openPreviewLink() {
-  const match = /^#preview\/machines(?:\/([a-z0-9_-]+))?$/.exec(location.hash);
+  const match = /^#preview\/(machines|extensions)(?:\/([a-z0-9_-]+))?$/.exec(location.hash);
   const leavingMachines = machinePreview && !match;
   machinePreview = !!match;
   if (machinePreview || wizard.previewLink(location.hash)) {
@@ -99,9 +100,10 @@ function openPreviewLink() {
     if (machinePreview) {
       loadCollection?.();
       $('phase-nav').hidden = false;
-      navigate(2);
+      navigate(match[1] === 'extensions' ? 3 : 2);
       if (kit) {
-        inspect(kit.machines.find(m => m.id === match[1])?.id ?? kit.machines[0].id);
+        if (match[1] === 'extensions') inspectExtension(kit.extensions?.find(e => e.id === match[2])?.id ?? kit.extensions?.[0]?.id);
+        else inspect(kit.machines.find(m => m.id === match[2])?.id ?? kit.machines[0].id);
         recalculate();
       }
     } else {
@@ -239,7 +241,7 @@ async function inspect(id) {
     ...(own => ({[m.kind === 'effect' ? 'Effect number' : 'Engine number']: own.effect ?? own.engine, 'Page': own.page}))(
       linked?.numbers?.[m.id] ?? m.identity),
     ...(m.source ? {'Release': m.source.tag, 'Commit': m.source.commit.slice(0, 12)} : {})});
-  document.querySelectorAll('.machine button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === id)));
+  document.querySelectorAll('#machines button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === id)));
   if (m.preview) {
     try {
       const wasm = Core.decode64(m.preview.wasm);
@@ -381,27 +383,46 @@ function renderExtensions() {
   $('extensions').replaceChildren();
   $('extensions-empty').hidden = entries.length !== 0;
   for (const extension of entries) {
-    const card = node('label', undefined, 'extension-card'), input = node('input');
+    const row = node('article', undefined, 'machine' + (selectedExtensions.includes(extension.id) ? ' selected' : ''));
+    row.style.setProperty('--machine', 'var(--machine-1)');
+    const label = node('label'), input = node('input');
     input.type = 'checkbox'; input.checked = selectedExtensions.includes(extension.id);
-    input.setAttribute('aria-label', extension.name);
-    const details = node('div');
-    details.append(node('h2', extension.name), node('p', extension.description),
-      node('p', extension.gesture, 'extension-gesture'));
+    input.setAttribute('aria-label', 'Include ' + extension.name); label.append(input);
+    const button = node('button'); button.dataset.id = extension.id;
+    button.setAttribute('aria-pressed', String(inspectedExtension === extension.id));
+    const ownBytes = kit.objects.filter(o => o.extension === extension.id)
+      .flatMap(o => o.sections.filter(s => s.group)).reduce((total, s) => total + s.size, 0);
+    const meta = node('span', undefined, 'machine-meta');
+    meta.append(node('span', 'Extension'), node('span', kib(ownBytes), 'machine-memory'));
+    button.append(node('span', extension.name, 'machine-name'), meta);
+    button.onclick = () => inspectExtension(extension.id);
     const conflict = entries.find(e => e.id !== extension.id && selectedExtensions.includes(e.id) &&
       e.record_double_tap && extension.record_double_tap);
     if (conflict && !input.checked) {
       input.disabled = true;
       const message = node('p', 'Uses the same shortcut as ' + conflict.name + '. Deselect it first.', 'extension-conflict');
-      message.id = 'conflict-' + extension.id; input.setAttribute('aria-describedby', message.id); details.append(message);
+      message.id = 'conflict-' + extension.id; input.setAttribute('aria-describedby', message.id); button.append(message);
     }
     input.onchange = () => {
       selectedExtensions = Core.extensionSelection(kit, input.checked ? [...selectedExtensions, extension.id]
         : selectedExtensions.filter(id => id !== extension.id));
       invalidate(); renderExtensions(); recalculate();
-      document.querySelector('#extensions input[aria-label="' + CSS.escape(extension.name) + '"]')?.focus();
+      document.querySelector('#extensions input[aria-label="Include ' + CSS.escape(extension.name) + '"]')?.focus();
     };
-    card.append(input, details); $('extensions').append(card);
+    const glyph = node('span', undefined, 'machine-icon'); glyph.append(Visuals.icon('controls'));
+    row.append(label, glyph, button); $('extensions').append(row);
   }
+  inspectExtension(entries.find(e => e.id === inspectedExtension)?.id ?? entries[0]?.id);
+}
+function inspectExtension(id) {
+  const extension = kit.extensions?.find(e => e.id === id);
+  inspectedExtension = extension?.id;
+  $('extension-details').hidden = !extension;
+  if (!extension) return;
+  $('extension-name').textContent = extension.name;
+  $('extension-description').textContent = extension.description;
+  $('extension-gesture').textContent = extension.gesture;
+  document.querySelectorAll('#extensions button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === id)));
 }
 function recalculate() {
   linked = null; $('selection-count').textContent = selected.length + ' selected';
@@ -480,7 +501,7 @@ $('restore').onchange = async e => {
   try {
     const saved = JSON.parse(new TextDecoder().decode(await readBounded(e.target.files[0], 65536)));
     const loaded = Core.readLayout(kit, saved);
-    const extensions = Core.extensionSelection(kit, saved.extensions);
+    const extensions = Core.extensionSelection(kit, Object.hasOwn(saved, 'extensions') ? saved.extensions : []);
     if (loaded.selected) Core.linkKit(kit, loaded.selected, loaded.machines, extensions);
     selectedExtensions = extensions;
     rememberNumbers(loaded.machines);

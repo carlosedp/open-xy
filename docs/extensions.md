@@ -21,7 +21,7 @@ to [`profiles/extensions.json`](../profiles/extensions.json), with
 extensions, validates their source boundary and records their sources and
 selection in package provenance. Add an `extension.json` beside the source with
 three nonempty text fields: `name`, `description` and `gesture`. These provide
-the browser selection card; the description should explain changes to stock
+the browser selection row and details panel; the description should explain changes to stock
 behavior and when the extension clears its state.
 
 Native builds include the declared collection. Browser kits export those objects

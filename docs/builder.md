@@ -41,7 +41,8 @@ leaves the browser.
    link to the machine's code at the commit the catalog pins. Open-XY's own
    example machines from the catalog are labelled as Open-XY machines. A
    [personal kit](#export-a-kit)'s own machines are marked **Yours**.
-4. Choose optional extensions. Each card explains the behavior and its gesture.
+4. Choose optional extensions using the same checkbox rows as machines. Select
+   a row to read its description and gesture in the details panel.
    Extensions start off; continuing with none is valid. The summary lists your
    machines, extensions and combined memory use. Conflicting Record-double-tap
    claims cannot be selected together.
@@ -68,8 +69,8 @@ The builder accepts only the exact stock file or an exact Open-XY output of the
 same collection. Encrypted `.tfw`, unknown patches and damaged files are
 rejected. Opening an Open-XY build restores its machine selection by rebuilding
 the stock image from it, including the extension selection. Saved selection files
-also retain extensions; older selection files without that field retain the kit's
-full extension collection. Projects, presets and samples on the device are not
+also retain extensions; older selection files without that field select none.
+Projects, presets and samples on the device are not
 touched.
 
 ### Dev menu
@@ -119,6 +120,9 @@ collection without uploading an OS file. Append a machine ID, for example
 `#preview/machines/fm2op`, to open its details directly. Installation stays disabled;
 the **OS** button returns to the normal builder entry. A configured collection is
 required for machine previews.
+
+The extension picker has a direct preview at `#preview/extensions`, with no OS
+file required. Building remains disabled in preview mode.
 
 Installation screens have direct preview links, such as
 `http://127.0.0.1:8918/#preview/mac/transfer`, `#preview/mac/exit-transfer`
