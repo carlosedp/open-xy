@@ -58,12 +58,13 @@ def generate_drum_callbacks(directory, machines):
             continue
         p = m.prefix
         declarations += [f'extern const char {p}_engine_id[] __asm__("{p}_engine_id");',
-                         f'int {p}_ready() __asm__("{p}_ready");',
+                         f'int {p}_record_ready() __asm__("{p}_record_ready");',
                          f'void {p}_drum_defaults(opxy::u32, opxy::u8*) __asm__("{p}_drum_defaults");',
                          f'const char* {p}_drum_label(opxy::u32, opxy::u32) __asm__("{p}_drum_label");',
                          f'const char* {p}_drum_model_name(opxy::u32) __asm__("{p}_drum_model_name");',
                          f'opxy::u32 {p}_drum_count(opxy::u32) __asm__("{p}_drum_count");']
-        rows.append(f'    {{{p}_engine_id, {p}_ready, {m.definition["resources"]["modelCount"]}, '
+        # Audio classification must not require a screen constructed on the GUI role.
+        rows.append(f'    {{{p}_engine_id, {p}_record_ready, {m.definition["resources"]["modelCount"]}, '
                     f'{p}_drum_defaults, {p}_drum_label, {p}_drum_model_name, {p}_drum_count}},')
     source = '#include "drum_machines.hpp"\nextern "C" {\n' + '\n'.join(declarations) + '\n}\n'
     source += 'const opxy::platform::DrumMachine sdk_drum_machines[] = {\n' + ('\n'.join(rows) or '    {},') + '\n};\n'

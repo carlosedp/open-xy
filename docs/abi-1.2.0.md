@@ -385,6 +385,9 @@ The SDK aliases only the local Drumline classification branches to engine 4;
 stock and occupied registrations retain their behavior. Ten exact hooks cover
 the drum predicate, region lookup, editor dispatch and preset import/export.
 The shared sample note hook selects the Drumline payload only for owned kits.
+Drum classification checks exact engine-record ownership without requiring a
+GUI screen: the audio role registers engines but does not construct their pages.
+Catalog and screen readiness retain their loaded-page checks.
 The classifier result is stored in voice byte `+0x4e` at `8d51a258`.
 The renderer chooser at `8d51afba` selects the drum renderer `8d51a684`
 when that byte is nonzero. Its call at `8d51a96a` uses vtable `+12` with

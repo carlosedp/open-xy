@@ -4,12 +4,32 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
+
+from tooling.adapters import generate_drum_callbacks
 
 from test_sample_services import HOST_CXX, ROOT
 
 
 @unittest.skipUnless(HOST_CXX, 'No working host C++ compiler (set OPXY_TEST_HOST_CXX)')
 class DrumServices(unittest.TestCase):
+    def test_generated_classification_does_not_require_gui_screen(self):
+        platform = ROOT / 'sdk/platform/opxy-1.2.0'
+        machine = SimpleNamespace(kind='drum', prefix='probe', definition={'resources': {'modelCount': 30}})
+        with tempfile.TemporaryDirectory(prefix='drum-classification-') as folder:
+            folder = Path(folder)
+            generated = generate_drum_callbacks(folder, [machine])
+            binary = folder / ('classification.exe' if os.name == 'nt' else 'classification')
+            hidden = dict(creationflags=subprocess.CREATE_NO_WINDOW) if os.name == 'nt' else {}
+            command = [HOST_CXX, '-std=c++11', '-O2', '-Wall', '-Werror',
+                       '-I' + str(ROOT / 'sdk/include'), '-I' + str(platform),
+                       str(generated), str(platform / 'drum_machines.cpp'),
+                       str(ROOT / 'tests/fixtures/drum_classification.cpp'), '-o', str(binary)]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=120, **hidden)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30, **hidden)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_pad_edit_alternates_shift_and_model_changes(self):
         platform = ROOT / 'sdk/platform/opxy-1.2.0'
         with tempfile.TemporaryDirectory(prefix='drum-services-') as folder:
