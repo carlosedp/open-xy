@@ -18,11 +18,11 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-from . import screen, startup_label, stock_tables
+from . import runtime, screen, startup_label, stock_tables
 from .adapters import (catalog_entry, generate_display, generate_fx_object, generate_registration,
                        generate_registration_stock, generate_sample_voice,
                        generate_sample_callbacks, generate_screen, generate_screen_order,
-                       generate_synth_controls, generate_project_companion_table, generate_voice)
+                       generate_synth_controls, generate_project_companion_table, generate_voice, generate_drum_callbacks)
 from .contributors import validate_source_boundary
 from .firmware import active_services, assemble, hook_instruction, hook_target, patch_active
 from .formats import elf32, elf_sections, require, sha
@@ -37,7 +37,7 @@ TARGET = 'opxy-1.2.0'
 # development: the builder distributes it too. Firmware always comes from the device.
 STOCK_CONTENT = ROOT / 'profiles/opxy-1.2.0/content'
 DEFINITIONS = dict(stock_catalog_insert=0x8d5bbaa0, stock_gui_role=0x8d5c200c, stock_sample_classify_tail=0x8d5b5b3e,
-                   stock_sample_key_tail=0x8d5878ac)
+                   stock_sample_key_tail=0x8d5878ac, stock_drum_classify_tail=0x8d5b5b6e)
 TEMPLATES = 'sdk/platform/opxy-1.2.0/'
 RUNTIME_ASM, RUNTIME_CXX = 'sdk/platform/blackfin/divide.s', 'sdk/platform/blackfin/memory.cpp'
 ALLOWED_SECTIONS = {'.text', '.rodata', '.data', '.bss'}
@@ -107,7 +107,7 @@ def compiler_paths(directory):
         require(path.is_file() and path.stat().st_size <= MAX_COMPILER_FILE, f'Missing/oversized compiler file: {path}')
         require(file_hash(path) == expected, f'Compiler file hash mismatch: {relative}')
         result[relative] = path
-    return dict(cxx=result['bin/bfin-elf-g++' + suffix])
+    return dict(cxx=result['bin/bfin-elf-g++' + suffix], runtime=result.get(runtime.ARCHIVE))
 
 
 def check_sources(machines):
@@ -155,7 +155,7 @@ def plan(machines, profile=None):
     """
     units = []
     for m in machines:
-        if m.kind == 'synth':
+        if m.kind in ('synth', 'drum'):
             steps = ('voice', *('source:' + s for s in m.sources), 'display', 'screen', 'registration')
         elif m.kind == 'effect':
             steps = ('registration', 'fx_object')
@@ -177,12 +177,15 @@ SDK_UNITS = ('divide', 'memory', 'registration', 'registration_stock', 'startup'
              'sample_cache_hooks', 'sample_progress', 'sample_progress_stock', 'pad_assignment',
              'pad_assignment_stock', 'drum_page', 'drum_controls_stock', 'drum_display_stock', 'screen_order',
              'screen_hooks', 'synth_controls', 'synth_control_table', 'note_activity', 'project_companion',
-             'project_companion_table', 'profiling', 'lfo', 'lfo_stock', 'lfo_hooks')
+             'project_companion_table', 'profiling', 'lfo', 'lfo_stock', 'lfo_hooks',
+             'drum_machines', 'drum_callbacks', 'drum_values_stock', 'drum_synthesis_stock', 'drum_hooks')
 # SDK units that exist only for a profile service, linked when a machine needs it.
 UNIT_SERVICES = dict.fromkeys(('sample_machines', 'sample_hooks', 'sample_callbacks', 'sample_cache',
                                'sample_cache_stock', 'sample_cache_hooks', 'sample_progress',
                                'sample_progress_stock', 'pad_assignment', 'pad_assignment_stock', 'drum_page',
                                'drum_controls_stock', 'drum_display_stock'), 'samples')
+UNIT_SERVICES['drum_hooks'] = 'drums'
+UNIT_SERVICES['drum_synthesis_stock'] = 'drums'
 
 
 def module_bytes(profile):
@@ -202,10 +205,10 @@ def object_memory(data):
     return initialized, state
 
 
-def memory_by_owner(directory, machines, profile=None):
+def memory_by_owner(directory, machines, profile=None, runtime_members=()):
     """Bytes each machine (and 'sdk' for shared code) places in the module, before alignment."""
     usage = {}
-    for name, owner in object_owners(machines, profile).items():
+    for name, owner in object_owners(machines, profile, runtime_members).items():
         initialized, state = object_memory(read(Path(directory) / name))
         share = usage.setdefault(owner or 'sdk', dict(initialized_bytes=0, state_bytes=0))
         share['initialized_bytes'] += initialized
@@ -222,9 +225,10 @@ def memory_summary(usage, total, limit):
         f'{owner} {size / 1024:.1f} KiB' for owner, size in shares)
 
 
-def object_owners(machines, profile=None):
+def object_owners(machines, profile=None, runtime_members=()):
     """Object name -> owning machine ID (None for the SDK's shared objects), in link order."""
-    return {name: (m.id if m else None) for name, m, _step in plan(machines, profile)}
+    return {**{name: (m.id if m else None) for name, m, _step in plan(machines, profile)},
+            **{runtime.object_name(name): None for name in runtime_members}}
 
 
 def object_services(machines, profile=None):
@@ -262,6 +266,8 @@ def compile_collection(directory, toolchain, compiler, profile, machines, defini
         folder = obj.parent
         folder.mkdir(exist_ok=True)
         if m is None:
+            if step == 'drum_callbacks':
+                return cxx(str(generate_drum_callbacks(folder, machines)), obj)
             if step == 'screen_order':
                 return cxx(str(generate_screen_order(folder)), obj)
             if step == 'sample_callbacks':
@@ -279,7 +285,7 @@ def compile_collection(directory, toolchain, compiler, profile, machines, defini
             if step == 'startup_label':
                 return assemble_unit(startup_label.generate(folder, version), obj)
             if step == 'startup':
-                prefixes = [x.prefix for x in by_kind(machines, 'synth', 'sample')]
+                prefixes = [x.prefix for x in by_kind(machines, 'synth', 'drum', 'sample')]
                 return cxx(str(generate_startup(folder, prefixes, [x.prefix for x in effects],
                                                 [x.prefix for x in sample_engines])), obj)
             if (ROOT / TEMPLATES / (step + '.cpp')).is_file():
@@ -301,6 +307,22 @@ def compile_collection(directory, toolchain, compiler, profile, machines, defini
         obj.write_bytes(normalize_object(read(obj)))
         require('R_BFIN_RIMM16' not in execute([tools['objdump'], '-r', obj]), 'Truncated address relocation in ' + name)
         names.append(name)
+    # The archive path is returned only after compiler_paths authenticates it.
+    # Existing integer-only builds never parse it or gain runtime objects.
+    inputs = [read(directory / name) for name in names]
+    runtime_members = []
+    if runtime.needs_runtime(inputs, definitions):
+        require(gcc['runtime'] is not None, 'This compiler profile has no authenticated arithmetic runtime')
+        archive = runtime.archive_members(read(gcc['runtime']))
+        candidates = {name: runtime.normalize_member(data) for name, data in archive.items()
+                      if name.endswith('.o') and name[:-2] in runtime.MEMBERS}
+        runtime_members = runtime.select(inputs, candidates, definitions)
+        for member in runtime_members:
+            name = runtime.object_name(member)
+            obj = directory / name
+            obj.parent.mkdir(exist_ok=True)
+            obj.write_bytes(candidates[member])
+            names.append(name)
     stack_usage(directory)
     # GNU ld synthesizes FILE symbols from object arguments; relative names keep
     # independent rebuilds byte-identical.
@@ -312,10 +334,11 @@ def compile_collection(directory, toolchain, compiler, profile, machines, defini
         overflow = re.search(r"region `MODULE' overflowed by (\d+) bytes", error.output or '')
         if not overflow and 'Module overlaps the relocated tables' not in (error.output or ''):
             raise
-        usage, limit = memory_by_owner(directory, machines, profile), module_bytes(profile)
+        usage, limit = memory_by_owner(directory, machines, profile, runtime_members), module_bytes(profile)
         total = limit + int(overflow.group(1)) if overflow else sum(sum(share.values()) for share in usage.values())
         raise ValueError('Machines exceed the shared module memory, ' + memory_summary(usage, total, limit)) from None
-    module, sizes, patch_profile, hooks, stack, usage = check_module(directory, tools, profile, machines, profiling)
+    module, sizes, patch_profile, hooks, stack, usage = check_module(directory, tools, profile, machines, profiling,
+                                                                   runtime_members)
     require(provenance(machines) == before, 'Sources changed during compilation')
     report = dict(schema=1, target=TARGET, status='experimental-unqualified', sources=before,
                   host=host_platform(), tools=host_pins('tools')[0], compiler=host_pins('compiler')[0],
@@ -323,9 +346,11 @@ def compile_collection(directory, toolchain, compiler, profile, machines, defini
                   sizes=sizes, memory=usage, module_bytes=module_bytes(profile), audio_stack_bytes=stack,
                   reserved_bytes=profile['reserved_bytes'],
                   module_sha256=sha(module), elf_sha256=sha(read(directory / 'module.elf')), hooks=hooks,
-                  objects=object_owners(machines, profile), patches=patch_profile['patches'],
+                  objects=object_owners(machines, profile, runtime_members), patches=patch_profile['patches'],
                   services=sorted(active_services(profile, (m.kind for m in machines))), device_operations=False,
                   hardware_tested=False, cpu_timing_measured=False)
+    if runtime_members:
+        report['runtime'] = runtime_members
     save_json(directory / 'compile-report.json', report)
     return bytes(module), report, patch_profile
 
@@ -435,7 +460,7 @@ def audio_stack_bounds(disassembly, module, base, symbols, machines):
     return bounds
 
 
-def check_module(directory, tools, profile, machines, profiling=True):
+def check_module(directory, tools, profile, machines, profiling=True, runtime_members=()):
     require(type(profiling) is bool, 'Profiling must be a boolean')
     elf = directory / 'module.elf'
     sections, symbols = elf32(read(elf))
@@ -478,7 +503,7 @@ def check_module(directory, tools, profile, machines, profiling=True):
     limit = module_bytes(profile)
     require(all(sizes.values()), 'Empty module section')
     require(symbols['__extensions_reserved_end']['value'] - low == limit, 'Linker module region differs from the profile')
-    usage = memory_by_owner(directory, machines, profile)
+    usage = memory_by_owner(directory, machines, profile, runtime_members)
     # One pool for code, data and state of every machine; name each share when it overflows.
     if sizes['allocated_span_bytes'] > limit:
         raise ValueError('Machines exceed the shared module memory, ' +
@@ -559,7 +584,7 @@ def check_bindings(by_id, prefix, display):
                 'Bound elements take transform="matrix(1 0 0 1 x y)" or none: ' + name)
     for name in texts:
         node = by_id[name]
-        require(not {'x', 'y'} & node.keys() and len(node.text or '') < 24,
+        require(not {'x', 'y'} & set(node.keys()) and len(node.text or '') < 24,
                 'Text slots are positioned by their transform and hold at most 23 characters: ' + name)
     return palette
 
@@ -612,7 +637,7 @@ def extend_catalog(catalog, profile, machines):
 
     The insertion offsets are bound to the exact authenticated stock catalog.
     """
-    groups = dict(engine_types=by_kind(machines, 'synth', 'sample'), fx_types=by_kind(machines, 'effect'))
+    groups = dict(engine_types=by_kind(machines, 'synth', 'drum', 'sample'), fx_types=by_kind(machines, 'effect'))
     result, base = catalog, json.loads(catalog)
     for key, at in sorted(profile['stock_catalog_inserts'].items(), key=lambda item: -item[1]):
         result = result[:at] + ''.join(catalog_entry(m) for m in groups[key]).encode('utf-8') + result[at:]
@@ -675,6 +700,8 @@ def verification(stock, catalog, package, toolchain, compiler, *, require_record
         expected_assets['os.ldr'] = assemble(stock, module, patch_profile, profile, len(profile['patches']),
                                                set(report['services']), profiling)
         expected = {'candidate/' + name: data for name, data in expected_assets.items()}
+        if report.get('runtime'):
+            expected['runtime.LICENSE'] = read(ROOT / 'sdk/platform/blackfin/runtime.LICENSE')
         expected['analysis/module.bin'] = module
         expected['analysis/module.elf'] = read(temporary / 'module.elf')
         require(document(package / 'analysis/compile-report.json') == report, 'Compile provenance differs from fresh build')
@@ -722,6 +749,9 @@ def build(out, toolchain, compiler, stock_os, stock_content, entries=None, layou
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     tracked = ['candidate/' + name for name in prepared] + ['analysis/module.bin', 'analysis/module.elf'] + ANALYSIS
+    if report.get('runtime'):
+        (output / 'runtime.LICENSE').write_bytes(read(ROOT / 'sdk/platform/blackfin/runtime.LICENSE'))
+        tracked.append('runtime.LICENSE')
     save_json(output / 'manifest.json', dict(schema=1, target=TARGET, version=version, collection=entries, profiling=profiling,
                                              **({'layout': layout} if layout else {}),
                                              files={name: sha(read(output / name)) for name in tracked}))

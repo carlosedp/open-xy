@@ -24,12 +24,13 @@ class StartupLabelTests(unittest.TestCase):
         profile = json.loads((ROOT / f'profiles/{label.PROFILE}.json').read_text())
         count = len(profile['patches'])
         check_patch_boundaries(profile, count)
-        edit = profile['patches'][-1]
+        index = next(i for i, p in enumerate(profile['patches']) if p['kind'] == 'startup')
+        edit = profile['patches'][index]
         self.assertTrue(label.allowed(profile, edit))
         for key, value in [('address', hex(label.SITE + 2)), ('before', '00' * 10),
                            ('length', 8), ('file_offset', '0xf04d6'), ('symbol', 'other')]:
             changed = copy.deepcopy(profile)
-            changed['patches'][-1][key] = value
+            changed['patches'][index][key] = value
             with self.assertRaises(ValueError):
                 check_patch_boundaries(changed, count)
         profile['id'] = 'another-profile'

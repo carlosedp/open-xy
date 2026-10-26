@@ -60,6 +60,7 @@ def control_label(value):
 # Resources each kind declares; the SDK owns everything else about its storage.
 RESOURCES = {
     'synth': ('voiceBytes', 'voiceAlignment', 'voiceCapacity', 'sharedBytes', 'outputPeakQ31', 'display'),
+    'drum': ('voiceBytes', 'voiceAlignment', 'voiceCapacity', 'sharedBytes', 'outputPeakQ31', 'display', 'modelCount'),
     'sample': ('voiceCapacity',),
     'effect': (),
 }
@@ -81,7 +82,7 @@ DISPLAY_FORMATS = ('ratio', 'percent', 'bipolar', 'duration', 'semitones', 'enum
 # Every kind's parameters occupy the stock eight-word parameter vector in order.
 # A synth's first four fill the four-control page; up to four more are alternates
 # (see control_positions). Sample engines and effects use one to eight.
-CONTROLS = {'synth': (4, 8), 'sample': (1, 8), 'effect': (1, 8)}
+CONTROLS = {'synth': (4, 8), 'drum': (8, 8), 'sample': (1, 8), 'effect': (1, 8)}
 # Stock voice indices: a voice object for each, 0..255.
 STOCK_VOICES = 256
 SYNTH_POSITIONS = 4
@@ -130,18 +131,26 @@ def validate_definition(value, kind):
                 % EFFECT_BUFFER_LIMIT)
     if kind == 'effect':
         require(resources.get('transport', 0) in (0, 1), 'transport must be 0 or 1')
-    if kind == 'synth':
+    if kind in ('synth', 'drum'):
         validate_synth_resources(resources)
+    if kind == 'drum':
+        require(2 <= resources['modelCount'] <= 128, 'A drum kit has 2..128 models')
     parameters = value['parameters']
     low, high = CONTROLS[kind]
     require(isinstance(parameters, list) and low <= len(parameters) <= high,
             f'Control count outside {low}..{high} for this kind')
     names = set()
     for i, parameter in enumerate(parameters):
-        alternate = kind == 'synth' and i >= SYNTH_POSITIONS
+        alternate = kind in ('synth', 'drum') and i >= SYNTH_POSITIONS
         validate_parameter(parameter, alternate)
         require(parameter['id'] not in names, 'Duplicate parameter identity')
         names.add(parameter['id'])
+    if kind == 'drum':
+        require(sorted(p['control'] for p in parameters[4:]) == [0, 1, 2, 3],
+                'A drum kit has one alternate per encoder')
+        require(parameters[0]['mapping']['kind'] == 'enum' and
+                len(parameters[0]['mapping']['labels']) == resources['modelCount'],
+                'The first drum control enumerates every model')
     require(isinstance(value['presets'], dict) and len(value['presets']) <= 64, 'Invalid presets')
     for name, preset in value['presets'].items():
         label(name); keys(preset, names, 'preset')

@@ -68,7 +68,7 @@ def validate(value):
         stock_name(name)
         require(name not in names, f'{name}: the ID is already {names.get(name)}')
         names[name] = 'listed in the catalog'
-        require(entry['kind'] in ('synth', 'sample', 'effect'), f'{name}: unknown kind')
+        require(entry['kind'] in ('synth', 'drum', 'sample', 'effect'), f'{name}: unknown kind')
         require(isinstance(entry['maintainer'], str) and re.fullmatch(MAINTAINER, entry['maintainer']),
                 f'{name}: maintainer is a GitHub user name')
         if 'repository' in entry:

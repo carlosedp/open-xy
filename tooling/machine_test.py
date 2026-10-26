@@ -1,7 +1,7 @@
 """Check machine folders anywhere, as a machine repository's CI does.
 
 For each folder: the machine's records and sources against this SDK, a browser
-preview build of a synth, the machine's own host tests (tests/*.cpp, compiled
+preview build of a synth or drum, the machine's own host tests (tests/*.cpp, compiled
 against the SDK headers and run), an estimate of its CPU cost next to Open-XY's
 core machines', and optionally a native compile of every folder together. No
 stock files and no device.
@@ -30,7 +30,7 @@ def host_tests(m, host_cxx, scratch):
         # The machine's include folders, as its preview and native builds use them.
         includes = [ROOT / 'sdk/include', m.root, *(m.root / extra for extra in m.includes)]
         command = [host_cxx, '-std=c++11', '-O2', '-Wall', '-Werror', *('-I' + str(path) for path in includes),
-                   str(test), '-o', str(binary)]
+                   str(test), *(str(m.root / source) for source in m.sources), '-o', str(binary)]
         result = subprocess.run(command, capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
         require(result.returncode == 0, f'{m.id}: {test.name} does not compile:\n{result.stdout}{result.stderr}')
         result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
@@ -41,7 +41,7 @@ def host_tests(m, host_cxx, scratch):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='sdk.py test', description=__doc__)
     parser.add_argument('--machine', type=Path, action='append', required=True, help='machine folder; repeatable')
-    parser.add_argument('--cxx', default='clang++', help='Clang++ with wasm32/wasm-ld, for synth previews')
+    parser.add_argument('--cxx', default='clang++', help='Clang++ with wasm32/wasm-ld, for synth and drum previews')
     parser.add_argument('--host-cxx', default='c++', help='host C++11 compiler for tests/*.cpp')
     parser.add_argument('--no-cpu', action='store_true', help='skip the CPU estimate')
     parser.add_argument('--firmware', action='store_true',
@@ -50,12 +50,12 @@ def main(argv=None):
     try:
         machines = [machine_at(folder) for folder in args.machine]
         require(len({m.id for m in machines}) == len(machines), 'Each machine folder needs its own ID')
-        check_sources([m for m in machines if m.kind != 'synth'])  # a synth's preview build checks its own
+        check_sources([m for m in machines if m.kind not in ('synth', 'drum')])  # previews check their own sources
         with tempfile.TemporaryDirectory(prefix='opxy-machine-test-') as scratch:
             scratch = Path(scratch)
             for m in machines:
                 done = [f'{m.kind} {m.id} ({m.root})']
-                if m.kind == 'synth':
+                if m.kind in ('synth', 'drum'):
                     from .preview import build
                     build(args.cxx, m, scratch / ('preview-' + m.id))
                     done.append('preview built')

@@ -17,12 +17,14 @@ from .catalog import official
 from .definitions import control_positions
 from .formats import require, sha
 from .machines import FIXED_NUMBERS
-from .pipeline import ROOT, child, fresh_output, read, require_release_host, resolve_toolchain, tool_paths
+from .pipeline import ROOT, child, document, fresh_output, read, require_release_host, resolve_toolchain, tool_paths
 from . import native, preview, screen
 
 
-def notices(machines):
+def notices(machines, runtime=False):
     texts = ['OP-XY SDK modules\n\n' + read(ROOT / 'LICENSE').decode('utf-8')]
+    if runtime:
+        texts.append(read(ROOT / 'sdk/platform/blackfin/runtime.LICENSE').decode('utf-8'))
     for m in machines:
         license_file = child(m.root, 'vendor/LICENSE')
         if license_file.is_file():
@@ -47,7 +49,9 @@ def export(package, output, tools, preview_cxx='clang++', *, stock_catalog, pers
     profile, machines, definitions = native.configuration(native.package_collection(package))
     sources = catalog_sources(machines, personal)
     require(sha(stock_catalog) == profile['stock_catalog_sha256'], 'Stock catalog hash mismatch')
-    owners, services = native.object_owners(machines, profile), native.object_services(machines, profile)
+    runtime_members = document(package / 'analysis/compile-report.json').get('runtime', [])
+    owners, services = native.object_owners(machines, profile, runtime_members), native.object_services(machines, profile)
+    runtime_names = {native.runtime.object_name(member) for member in runtime_members}
     kit_machines = []
     for m in machines:
         # The numbers it asks for; the builder numbers each selection (core.mjs assignNumbers).
@@ -69,6 +73,9 @@ def export(package, output, tools, preview_cxx='clang++', *, stock_catalog, pers
             entry['absent'] = {m.prefix + suffix: 'kit_absent' for suffix in ('_fx_register', '_ready')}
         else:
             entry['absent'] = {m.prefix + suffix: 'kit_absent' for suffix in ('_register', '_name_matches', '_ready', '_record_ready')}
+            if m.kind == 'drum':
+                entry['absent'].update({m.prefix + suffix: 'kit_absent' for suffix in
+                                        ('_drum_defaults', '_drum_label', '_drum_model_name', '_drum_count')})
             if m.display == 'stock':
                 # The shared sample table names these; unselected, its ready check declines first.
                 entry['absent'].update({symbol: 'kit_absent' for symbol in sample_callbacks(m)})
@@ -97,6 +104,8 @@ def export(package, output, tools, preview_cxx='clang++', *, stock_catalog, pers
         entry = dict(name=name, owner=owner, bytes=base64.b64encode(data).decode('ascii'), sha256=sha(data))
         if name in services:
             entry['service'] = services[name]
+        if name in runtime_names:
+            entry['runtime'] = True
         objects.append(entry)
     # Stock addresses only: each selection's machine numbers are the builder's.
     stock = {key: value for key, value in definitions.items() if key in native.DEFINITIONS}
@@ -104,7 +113,7 @@ def export(package, output, tools, preview_cxx='clang++', *, stock_catalog, pers
     kit = dict(format='opxy-browser-kit/1', version=native.package_version(package), profile=profile,
                profileSource=base64.b64encode(read(ROOT / ('profiles/' + profile['id'] + '.json'))).decode('ascii'),
                definitions=stock, fixed=FIXED_NUMBERS,
-               machines=kit_machines, objects=objects, notices=notices(machines),
+               machines=kit_machines, objects=objects, notices=notices(machines, bool(runtime_members)),
                stockCatalog=base64.b64encode(stock_catalog).decode('ascii'),
                screenTemplate=screen.template().decode('utf-8'))
     kit_path = output / 'kit.json'

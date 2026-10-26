@@ -18,15 +18,15 @@ from .definitions import ANALYSIS_HEAP_LIMIT, ROOT, stock_name, validate_definit
 from .formats import require
 from .pipeline import config
 
-KINDS = ('synth', 'sample', 'effect')
+KINDS = ('synth', 'drum', 'sample', 'effect')
 FIELDS = {'schema', 'sdk', 'kind', 'description', 'identity', 'sources', 'includes', 'icon', 'presetDefaults',
           'dryParameter'}
 # The public machine contract: headers, definition schema, artwork rules and
 # callbacks. A machine names the version it was written for; the SDK builds a
 # machine of the same major version and an equal or older minor version.
 # 1.1 adds display note activity; 1.2 an effect's delay buffer (resources.bufferBytes),
-# its tempo (resources.transport) and division captions.
-SDK_VERSION = (1, 2)
+# its tempo (resources.transport) and division captions; 1.3 adds synthesis drum kits.
+SDK_VERSION = (1, 3)
 # Builder card glyph: SVG path data in a 46 x 48 box, drawn as a stroke.
 ICON = re.compile(r'[MLHVCSQTAZmlhvcsqtaz][MLHVCSQTAZmlhvcsqtaz0-9 .,-]{0,511}')
 # Folders inside a machine that are never its source: version control, caches, tools.
@@ -155,6 +155,8 @@ def machine_at(root, identity=None):
     version = sdk_version(value.get('sdk'))
     kind = value.get('kind')
     require(kind in KINDS, 'Unknown machine kind: ' + str(kind))
+    if kind == 'drum':
+        require_sdk(version, (1, 3), 'A synthesis drum kit')
     require(isinstance(value.get('description'), str) and 0 < len(value['description']) <= 160,
             'Machine needs a short description')
     sources = tuple(_relative(root, s) for s in value.get('sources', ()))
@@ -180,9 +182,9 @@ def machine_at(root, identity=None):
         require(definition['parameters'][dry_parameter]['mapping'] ==
                 dict(kind='linear', minimum=0, maximum=1), 'dryParameter must map linearly from 0 to 1')
     # A synth draws its own screen; sample engines and effects use a stock page.
-    display = 'drawing' if kind == 'synth' else 'stock'
+    display = 'drawing' if kind in ('synth', 'drum') else 'stock'
     # The native plan compiles extra translation units only into synths.
-    if kind != 'synth':
+    if kind not in ('synth', 'drum'):
         require(not sources and not includes, 'Sample engines and effects compile one fx.cpp or sample.cpp')
     # Pad settings live in the stock drum page's pad records, whose fade the SDK then owns.
     if kind == 'sample' and definition['resources'].get('padSettings', 0):
@@ -286,7 +288,7 @@ def number_layout(rules, fixed, layout, machines):
                     f'{name} now asks for stock page {requested["page"]}; the layout holds another')
             continue
         identity = dict(requested)
-        for slot in ('effect',) if kind == 'effect' else ('engine', 'page') if kind == 'synth' else ('engine',):
+        for slot in ('effect',) if kind == 'effect' else ('engine', 'page') if kind in ('synth', 'drum') else ('engine',):
             choices = ([requested[slot]] if requested[slot] in pools[slot] else []) + pools[slot]
             # An effect number is also held as an engine number (occupied).
             keys = lambda n: [(slot, n)] + ([('engine', n)] if slot == 'effect' else [])

@@ -40,11 +40,18 @@ extensions_sample_note_region:
     HOOK_RESTORE
     CC = R5 == 0;
     IF CC JUMP .Lnote_nearest;
+    CC = R5 == 3;
+    IF CC JUMP .Lnote_synthesis;
     R7 = 30;
     CC = R5 == 1;
     IF CC JUMP .Lnote_nearest;
     R5 = 30;
     CC = R5 == 0;
+    RTS;
+.Lnote_synthesis:
+    R7 = 4;
+    R5 = 30;
+    CC = R7 == R5;
     RTS;
 .Lnote_nearest:
     R5 = 30;

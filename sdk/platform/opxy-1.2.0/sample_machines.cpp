@@ -2,6 +2,7 @@
 // engine number is not enough: the machine's registration must still be ours.
 // The stubs in sample_hooks.s call these from inside stock functions.
 #include "sample_machines.hpp"
+#include "drum_machines.hpp"
 
 using opxy::u32;
 using opxy::platform::SampleMachine;
@@ -25,6 +26,7 @@ const SampleMachine* sdk_sample_machine(u32 engine) {
 // canonical pads.
 enum NoteRoute : u32 { kStockRoute = 0, kOwnedNearest = 1, kOwnedDrumPads = 2 };
 u32 sdk_sample_note_route(u32 engine) {
+    if (sdk_drum_machine(engine)) return 3;
     const u32 page = opxy::platform::sample_page(engine);
     return !page ? kStockRoute : page == 7 ? kOwnedDrumPads : kOwnedNearest;
 }

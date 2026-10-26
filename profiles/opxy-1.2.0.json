@@ -89,7 +89,11 @@
   "screen_template_sha256": "d71b110ac905c1bcfcecc9ad94237aa72fe12c531e651f170bb5a1042547fb16",
   "services": {
     "samples": [
-      "sample"
+      "sample",
+      "drum"
+    ],
+    "drums": [
+      "drum"
     ]
   },
   "patches": [
@@ -1031,6 +1035,106 @@
       "length": 4,
       "before": "fce3ccad",
       "symbol": "sdk_lfo_label",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d5b5b68",
+      "file_offset": "0x1ecf40",
+      "length": 6,
+      "before": "980d00e80000",
+      "symbol": "extensions_drum_classify",
+      "service": "drums",
+      "call": false
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d4e3408",
+      "file_offset": "0x11a7e4",
+      "length": 6,
+      "before": "08e44a001808",
+      "symbol": "extensions_drum_preset_import",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d4e3720",
+      "file_offset": "0x11aafc",
+      "length": 4,
+      "before": "21600808",
+      "symbol": "extensions_drum_compare_r0",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d4e7210",
+      "file_offset": "0x11e5ec",
+      "length": 4,
+      "before": "21600808",
+      "symbol": "extensions_drum_compare_r0",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d4e6808",
+      "file_offset": "0x11dbe4",
+      "length": 6,
+      "before": "216088a10808",
+      "symbol": "extensions_drum_export_empty",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d4e6930",
+      "file_offset": "0x11dd0c",
+      "length": 4,
+      "before": "88a10808",
+      "symbol": "extensions_drum_export_parameters",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d4e6b68",
+      "file_offset": "0x11df44",
+      "length": 4,
+      "before": "88a11008",
+      "symbol": "extensions_drum_export_gain",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d58792e",
+      "file_offset": "0x1bed0a",
+      "length": 4,
+      "before": "8ba1299b",
+      "symbol": "extensions_drum_region_lookup",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8c0b1fb6",
+      "file_offset": "0xe9376",
+      "length": 8,
+      "before": "2160baa00a081810",
+      "symbol": "extensions_drum_editor_classify",
+      "service": "drums",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8c0b1fda",
+      "file_offset": "0xe939a",
+      "length": 8,
+      "before": "00de4d8d08690000",
+      "symbol": "sdk_drum_edit",
+      "service": "drums",
       "call": true
     },
     {

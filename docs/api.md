@@ -6,6 +6,7 @@ A machine is a folder under `machines/` named after the machine. Every kind has
 | Kind | C++ the machine supplies | Example |
 | --- | --- | --- |
 | `synth` | `engine.cpp` with `Voice`/`Shared` state, `display.cpp` and `panel.svg.fragment` | [2op FM](https://github.com/etcetc000/open-xy-core-machines/blob/main/machines/fm2op/engine.cpp), [Macro Osc](https://github.com/etcetc000/open-xy-core-machines/blob/main/machines/macroosc/engine.cpp) |
+| `drum` | The synth callbacks and drawing display, plus per-key model/control callbacks ([synthesis drum kits](#synthesis-drum-kits)) | Independent model selection on 24 keys |
 | `sample` | `sample.cpp` with `Voice` state; the stock sample page is its screen | [Timestretch](https://github.com/etcetc000/open-xy-core-machines/blob/main/machines/timestretch/sample.cpp) |
 | `effect` | `fx.cpp` with `State`; the stock FX page is its screen | [Ring Mod](https://github.com/etcetc000/open-xy-core-machines/blob/main/machines/ringmod/fx.cpp) |
 
@@ -20,7 +21,7 @@ fails the build or, for the artwork rule, halts the device's SVG parser.
 
 | Area | Rule |
 | --- | --- |
-| Machine folder | C++ source, definition JSON, `machine.json` and artwork only. No build scripts, generators or tests |
+| Machine folder | C++ source, metadata, artwork, engine-specific generators and sound tests |
 | C++ | Freestanding C++11: no exceptions, RTTI, static constructors, allocation, OS headers, `#if`, inline assembly or platform macros |
 | Callbacks | Bounded work per 64-sample block; no blocking, logging, file access or graphics from audio callbacks |
 | Synth controls | Four control positions, plus up to four alternates; values arrive as Q31 and the stock menu stores Q15 defaults |
@@ -54,8 +55,8 @@ figures. State usually dominates, since a synth's voice pool is
 
 `voiceBytes`, `sharedBytes` and display state have no limit of their own
 beyond whole words and module memory. Browser previews run 8 voices in
-512 KiB of WebAssembly memory; a machine that needs more still builds for the
-device.
+512 KiB of WebAssembly memory; drum previews use 2 MiB. Both audition one
+parameter set across their voices; the device provides per-key drum settings.
 
 ## CPU
 
@@ -89,8 +90,9 @@ host does fast and the Blackfin does not:
   device. Divide once per block, or use a table or a reciprocal.
 - **Floating point** has no hardware either. Keep audio in integers;
   [`q31.hpp`](../sdk/include/opxy/q31.hpp) has the fixed-point helpers.
-- **64-bit arithmetic** has no runtime helpers in the module: keep products
-  within 32 bits or split them, as `q31.hpp` does.
+- **64-bit arithmetic** and floating point may need software helpers. The
+  build links only the required authenticated [arithmetic runtime](toolchain.md)
+  members; their code counts toward module memory.
 - **Per-sample work that changes only per block**, such as coefficients and
   increments, belongs outside the sample loop.
 
@@ -105,7 +107,7 @@ Every machine kind keeps its controls in `definition.json` (for example
 | `schema` | 1 |
 | `id` | The machine's name; also its C++ namespace |
 | `name` | Display name |
-| `parameters` | Ordered controls, each with `id`, `label`, `default`, `mapping`, `display`: four to eight for a synth (see [alternate controls](#alternate-controls)), one to eight for a sample engine or effect. Labels are at most eight letters, digits or spaces |
+| `parameters` | Ordered controls, each with `id`, `label`, `default`, `mapping`, `display`: four to eight for a synth (see [alternate controls](#alternate-controls)), exactly eight for a drum kit, one to eight for a sample engine or effect. Labels are at most eight letters, digits or spaces |
 | `presets` | Named maps containing exactly the declared controls; may be empty |
 | `resources` | What the kind declares about its storage (below) |
 
@@ -230,6 +232,44 @@ method table and voice pool; none of that belongs in `Voice`.
 ownership; `release` cannot free a stolen lease. The engine decides how a
 voice behaves after losing a resource. This pool has no locks and requires
 serialized access.
+
+## Synthesis drum kits
+
+SDK 1.3 adds `"kind": "drum"`: one registered instrument with independent
+model selection and sound controls on 24 keys. It supplies the synth
+lifecycle, a drawing display, and the same resources plus `modelCount`
+(2..128). Its definition declares eight parameters. Slot zero is Model;
+slots 1..7 are model-specific controls. Each alternate uses a different
+encoder position, giving at most two functions per encoder.
+
+In the machine namespace, declare these callbacks in `core.h` and implement
+them alongside the engine:
+
+```cpp
+void drum_defaults(opxy::u32 key, opxy::u8* values); // fill eight raw values
+const char* model_name(opxy::u32 model);
+const char* parameter_name(opxy::u32 model, opxy::u32 slot);
+opxy::u32 parameter_count(opxy::u32 model); // 1..8, including Model
+```
+
+Keys passed to `drum_defaults` are canonical keys 53..76. Values are integers
+0..127; slot zero must be below `modelCount`. Names are static strings;
+parameter labels fit eight characters. Return an empty label for unused
+slots. The screen shows the selected key's values and labels. Encoder presses
+switch its main/alternate control; unavailable alternates return to the main
+control. Integer edits already have one-unit precision, including Shift turns.
+
+The adapter stores the eight raw values losslessly in four existing per-key
+preset words, with a format tag. Missing or untagged values use `drum_defaults`.
+The track's eight parameters are offsets, neutral at Q15 16384. The adapter
+decodes the key's values, adds the offsets and clamps before calling `render`.
+Model becomes the midpoint of its normalized enum bin. Other controls become
+`raw << 24`, with 127 mapped to `0x7fffffff`. Packed words never reach machine
+DSP. Presets and projects retain per-key settings using stock region storage.
+
+Kits use the same fixed shared-state and voice-pool rules as synths. Their
+code and state are linked once per machine, shared across tracks; voices
+still require independent state. Machine code and model data need no file loading when notes or patterns change.
 
 ## Sample engines
 
@@ -442,7 +482,7 @@ preset entries, its screen file, its symbol prefix and its C++ namespace. It is 
 | --- | --- |
 | `schema` | 1 |
 | `sdk` | The SDK version the machine targets, `"<major>.<minor>"`. This SDK is 1.1 and builds 1.0 and 1.1 machines |
-| `kind` | `synth`, `sample` or `effect` |
+| `kind` | `synth`, `drum`, `sample` or `effect` |
 | `description` | Plain text of at most 160 characters, shown by the builder and preview |
 | `identity` | The numbers it asks for: `{"engine": n, "page": p}`, or `{"effect": n, "page": 21}` for an effect; see below |
 | `sources`, `includes` | Optional extra translation units and include folders inside the machine folder; synths only, since the native plan compiles one source for the other kinds |

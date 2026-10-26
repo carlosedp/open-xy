@@ -6,13 +6,15 @@ import {PreviewEngine} from '../sdk/browser/engine.mjs';
 import {PreviewDisplay} from '../sdk/browser/display.mjs';
 import {shownControls} from '../sdk/browser/controls.mjs';
 
+const kind = process.argv[3] ?? 'synth';
+assert.ok(['synth', 'drum'].includes(kind), 'Unsupported preview kind');
 const module = await WebAssembly.compile(readFileSync(process.argv[2]));
 const engine = new PreviewEngine(module, 44100, Array(8).fill(0));
 const display = new PreviewDisplay(module);
 const memory = engine.api.memory.buffer, displayMemory = display.api.memory.buffer;
 assert.equal(engine.blockFrames, 64);
 assert.equal(engine.parameterCount, 8);
-assert.ok(memory.byteLength <= 1024 * 1024, 'Preview memory limit');
+assert.ok(memory.byteLength <= (kind === 'drum' ? 2 : 1) * 1024 * 1024, 'Preview memory limit');
 assert.throws(() => engine.api.memory.grow(1), RangeError);
 assert.throws(() => display.api.memory.grow(1), RangeError);
 assert.equal(engine.api.opxy_voice_state(engine.voices.length), 0, 'Factory bound');

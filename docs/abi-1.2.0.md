@@ -28,6 +28,7 @@ version is rejected. The output differs from stock in exactly these places:
 | Sample dispatch | 2 | Recognizes owned SDK sample registrations and selects the stock multisampler audio payload |
 | Sample analysis | 10 | Schedules bounded background work, snapshots committed assignments, releases cached analysis and reports progress |
 | Drum-page services | 14 | Routes controls, octave publication, assignment and waveform projection for machines declaring pad settings or drum controls |
+| Synthesis drum transport | 10 | Classifies owned drum kits for per-key editing, lookup and preset persistence while retaining their registered engine IDs |
 | Recorder | 6 | Recognizes owned sample engines when the stock recorder selects, releases and saves a pad, and assigns completed recordings to owned pads |
 | Relocated tables | 22 | Moves the effect records (63), engine records (63) and screen slots (128) into the last 8 KiB of the reservation |
 | Screen order | 1 | Paints a selected owned synth page before stock overlays |
@@ -41,8 +42,9 @@ version is rejected. The output differs from stock in exactly these places:
 
 The sample rows (sample dispatch, analysis, drum-page services and recorder)
 form the profile's `samples` service: a build applies those edits, and links
-the SDK code behind them, only when it includes a sample engine. Otherwise
-their sites stay stock. Everything else must reconstruct byte for byte. Protected ranges in
+the SDK code behind them, only when it includes a sample engine or synthesis drum kit. Synthesis drum
+transport is the `drums` service, used only by drum kits. Otherwise their sites
+stay stock. Everything else must reconstruct byte for byte. Protected ranges in
 [`pipeline.py`](../tooling/pipeline.py) admit only hooks into the module and
 the reviewed startup label.
 The bootloader is never modified.
@@ -375,3 +377,22 @@ supplies only wet audio. The generated adapter exposes the machine's declared
 `dryParameter`, or returns `INT32_MAX` when none is declared, matching stock's
 absent-object fallback. This is a source-mixer control, not a wet/dry crossfade
 inside the effect. See the [effect API](api.md#effects).
+
+## Synthesis drum transport
+
+An owned `drum` registration uses flag 1, its own engine ID and drawing page.
+The SDK aliases only the local Drumline classification branches to engine 4;
+stock and occupied registrations retain their behavior. Ten exact hooks cover
+the drum predicate, region lookup, editor dispatch and preset import/export.
+The shared sample note hook selects the Drumline payload only for owned kits.
+The mono render path uses the ordinary synth vtable; the kit never calls
+stock Drumline synthesis.
+
+Each key's four parameter words store 60 bits that stock exports as positive
+Q15 integers and restores with a left shift of 16. The SDK packs eight 7-bit
+values into 56 bits and a four-bit format tag into the remaining bits.
+`drum_storage.hpp` validates the tag before decoding. The other region fields,
+including gain, pan and model/playmode byte, retain stock layout. Defaults
+apply when the words have no valid tag. Track modulation is applied after
+decoding. GUI edits repack and use the stock dirty/publication calls; no audio
+callback writes preset state or performs file I/O.

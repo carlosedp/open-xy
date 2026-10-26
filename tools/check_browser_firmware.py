@@ -115,7 +115,7 @@ def main():
                 data = (prefix / name).read_bytes()
                 preset = json.loads(data)
                 definition = definitions[machine['id']]
-                defaults = catalog_defaults(definition)
+                defaults = [16384] * 8 if machine['kind'] == 'drum' else catalog_defaults(definition)
                 entry = json.loads(machine['catalog'].strip().lstrip(','))
                 require(preset['type'] == entry['type'] and preset['platform'] == 'OP-XY' and
                         preset['version'] == 4 and preset['engine']['params'] == defaults and

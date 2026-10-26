@@ -5,6 +5,7 @@
 #include "synth_controls.hpp"
 #include <opxy/effect.hpp>
 #include "stock.hpp"
+#include "drum_machines.hpp"
 
 extern "C" {
 void sdk_synth_press(opxy::u32) __asm__("sdk_synth_press");
@@ -56,17 +57,25 @@ const SynthControls* machine(u32 track, Track*& t) {
     const u32 engine = track_engine(track);
     const SynthControls* m = owned(engine);
     t = state(track, m ? engine : 0);
+    if (m) {
+        const DrumMachine* drum = sdk_drum_machine(engine);
+        u8 values[opxy::parameter_slots];
+        if (drum && sdk_drum_values(track, values)) {
+            const u32 count = drum->count(values[0]);
+            // A different pad/model can have fewer parameters than the one
+            // that selected this alternate. Return that position to primary.
+            for (u32 i = 0; i < opxy::page_controls; ++i)
+                if (t->slots[i] >= count) t->slots[i] = static_cast<u8>(i);
+        }
+    }
     return m;
-}
-
-u32 shown(u32 track, u32 position) {
-    Track* t;
-    return position < opxy::page_controls && machine(track, t) ? t->slots[position] : position;
 }
 }
 
 void sdk_synth_shown(u32 track, u8* slots) {
-    for (u32 i = 0; i < opxy::page_controls; ++i) slots[i] = static_cast<u8>(shown(track, i));
+    Track* t;
+    const SynthControls* m = machine(track, t);
+    for (u32 i = 0; i < opxy::page_controls; ++i) slots[i] = m ? t->slots[i] : static_cast<u8>(i);
 }
 
 // Reads only the selection the screen shell refreshed for this frame.
@@ -94,6 +103,9 @@ void sdk_synth_press(u32 encoder) {
     if (encoder < opxy::page_controls && top_controller_vtable() == kInstrumentController &&
         word(kInstrumentPage) == 0 && (m = machine(byte(kSelectedTrack), t))) {
         const u32 next = m->next[t->slots[encoder]];
+        const DrumMachine* drum = sdk_drum_machine(m->engine());
+        u8 values[opxy::parameter_slots];
+        if (drum && (!sdk_drum_values(byte(kSelectedTrack), values) || next >= drum->count(values[0]))) return;
         if (next < opxy::parameter_slots) t->slots[encoder] = static_cast<u8>(next);
     }
 }

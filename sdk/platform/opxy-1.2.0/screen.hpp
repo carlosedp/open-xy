@@ -7,6 +7,8 @@
 #include "opxy/types.hpp"
 #include "stock.hpp"
 #include "synth_controls.hpp"
+#include "drum_machines.hpp"
+#include "drum_storage.hpp"
 
 namespace opxy { namespace screen { namespace {
 
@@ -174,12 +176,44 @@ inline bool refresh_controls(Base* o, Controls& controls) {
     const Parameters view = {0, static_cast<u32>(reinterpret_cast<platform::Address>(words)),
                              static_cast<u32>(reinterpret_cast<platform::Address>(words + parameter_slots))};
     controls.valid = read_shown(stock_vector, controls, words);
+    u8 drum_values[8];
+    const platform::DrumMachine* drum = controls.track < 8
+        ? sdk_drum_machine(platform::track_engine(controls.track)) : nullptr;
+    if (drum && !sdk_drum_values(controls.track, drum_values)) drum = nullptr;
+    if (drum) {
+        controls.valid = true;
+        for (u32 i = 0; i < parameter_slots; ++i) {
+            controls.slots[i] = i == 0
+                ? platform::drum_model_q31(drum_values[i], drum->model_count)
+                : drum_values[i] == 127 ? 0x7fffffff : static_cast<i32>(drum_values[i]) << 24;
+            words[i] = static_cast<u32>(controls.slots[i]);
+        }
+        for (u32 i = 0; i < page_controls; ++i) {
+            controls.values[i] = controls.slots[controls.shown[i]];
+            words[i] = static_cast<u32>(controls.values[i]);
+        }
+    }
     update_controls(o, controls.track, controls.valid ? &view : stock_vector);
     if (controls.valid) {
         for (u32 i = 0; i < page_controls; ++i) {
             char text[16];
             if (sdk_synth_value(controls.track, controls.shown[i], controls.values[i], text))
                 set_text(o->values[i], text);
+            if (drum) {
+                const u32 slot = controls.shown[i];
+                set_text(o->titles[i], drum->label(drum_values[0], slot));
+                if (slot == 0) set_text(o->values[i], drum->model_name(drum_values[0]));
+                else {
+                    u32 value = drum_values[slot];
+                    char digits[4];
+                    u32 n = 0;
+                    if (value >= 100) { digits[n++] = '1'; value -= 100; }
+                    if (n || value >= 10) digits[n++] = static_cast<char>('0' + value / 10);
+                    digits[n++] = static_cast<char>('0' + value % 10);
+                    digits[n] = 0;
+                    set_text(o->values[i], slot < drum->count(drum_values[0]) ? digits : "");
+                }
+            }
         }
     }
     return true;
