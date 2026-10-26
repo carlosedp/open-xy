@@ -453,7 +453,8 @@ def audio_stack_bounds(disassembly, module, base, symbols, machines):
 
     bounds = {}
     for m in machines:
-        table, slot = (f'_{m.prefix}_fx_vtable', 0x10) if m.kind == 'effect' else (f'_{m.prefix}_vtable', 8)
+        table, slot = (f'_{m.prefix}_fx_vtable', 0x10) if m.kind == 'effect' else (
+            f'_{m.prefix}_vtable', 12 if m.kind == 'drum' else 8)
         entry = word(symbols[table]['value'] + slot)
         require(entry in body, 'Audio entry of ' + m.id + ' is not a function start')
         bounds[m.id] = depth(entry)
