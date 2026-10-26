@@ -58,7 +58,10 @@ def main():
     # The browser links the native objects in native order, so selecting every
     # machine reproduces the native package exactly.
     everything = directory / 'reference' / str(2 ** len(kit['machines']) - 1)
-    require(everything.with_suffix('.ldr').read_bytes() == (directory / 'source/candidate/os.ldr').read_bytes(),
+    source_profiling = json.loads((directory / 'source/manifest.json').read_bytes()).get('profiling')
+    require(type(source_profiling) is bool, 'Source package profiling must be a boolean')
+    source_suffix = '.ldr' if source_profiling else '.profiling-off.ldr'
+    require(everything.with_suffix(source_suffix).read_bytes() == (directory / 'source/candidate/os.ldr').read_bytes(),
             'Browser firmware for the full collection differs from the native package')
     for index, result in enumerate(json.loads((directory / 'reference/selections.json').read_text()), 1):
         prefix = directory / 'reference' / str(index)
