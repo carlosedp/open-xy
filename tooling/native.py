@@ -265,7 +265,7 @@ def compile_collection(directory, toolchain, compiler, profile, machines, defini
         folder.mkdir(exist_ok=True)
         if m is None:
             if step.startswith('extension:'):
-                return cxx('extensions/' + step.removeprefix('extension:') + '/extension.cpp', obj)
+                return cxx(str(extensions.generate_extension(folder, step.removeprefix('extension:'))), obj)
             if step == 'extension_runtime':
                 return cxx('sdk/platform/extension_runtime.cpp', obj)
             if step == 'extension_collection':

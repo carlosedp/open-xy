@@ -39,17 +39,40 @@ def generate_collection(folder):
     entries = collection()
     lines = ['#include "extension_runtime.hpp"']
     for entry in entries:
-        lines.append('namespace opxy { namespace extensions { namespace ' + entry['id'] +
-                     ' { extern const Hooks hooks; }}}')
+        symbol = 'sdk_extension_' + entry['id'] + '_hooks'
+        lines.append('extern "C" const opxy::extensions::Hooks* ' + symbol + '() __asm__("' + symbol + '");')
     lines += ['namespace opxy { namespace platform {', 'namespace {',
-              'const ExtensionEntry collection_entries[] = {']
+              'ExtensionEntry collection_entries[' + str(max(1, len(entries))) + '];', '}',
+              'const ExtensionEntry* extension_collection(u32& count) {', '    count = 0;']
     for entry in entries:
-        lines.append('    {"%s", %s, %s, &extensions::%s::hooks},' % (
-            entry['id'], str(entry['record_double_tap']).lower(), str(entry['edit_notes']).lower(), entry['id']))
-    # One unused sentinel also makes an empty collection standard C++11.
-    lines += ['    {nullptr, false, false, nullptr}', '};', '}',
-              'const ExtensionEntry* extension_collection(u32& count) {',
-              f'    count = {len(entries)};', '    return collection_entries;', '}', '}}', '']
+        lines += ['    if (const auto* hooks = sdk_extension_' + entry['id'] + '_hooks())',
+                  '        collection_entries[count++] = {"%s", %s, %s, hooks};' % (
+                      entry['id'], str(entry['record_double_tap']).lower(), str(entry['edit_notes']).lower())]
+    lines += ['    return collection_entries;', '}', '}}', '']
     target = folder / 'extension_collection.cpp'
     target.write_text('\n'.join(lines), encoding='utf-8')
     return target
+
+
+def generate_extension(folder, name):
+    """Stable C accessor; an omitted browser object resolves it to kit_absent."""
+    require(name in {entry['id'] for entry in collection()}, 'Unknown extension')
+    target = folder / ('extension_' + name + '.cpp')
+    source = (ROOT / 'extensions' / name / 'extension.cpp').as_posix()
+    symbol = 'sdk_extension_' + name + '_hooks'
+    target.write_text('#include "' + source + '"\n'
+                      'extern "C" const opxy::extensions::Hooks* ' + symbol + '() __asm__("' + symbol + '");\n'
+                      'extern "C" const opxy::extensions::Hooks* ' + symbol + '() {\n'
+                      '    return &opxy::extensions::' + name + '::hooks;\n}\n', encoding='utf-8')
+    return target
+
+
+def metadata():
+    result = []
+    for entry in collection():
+        data = document(ROOT / 'extensions' / entry['id'] / 'extension.json')
+        require(set(data) == {'name', 'description', 'gesture'} and
+                all(isinstance(value, str) and 0 < len(value) <= 600 for value in data.values()),
+                'Invalid extension display metadata: ' + entry['id'])
+        result.append(dict(entry, **data))
+    return result

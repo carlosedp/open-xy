@@ -57,13 +57,14 @@ def main():
     require(0 < width and 100 <= left and left + width <= 400, 'Startup label exceeds its drawing area')
     # The browser links the native objects in native order, so selecting every
     # machine reproduces the native package exactly.
-    everything = directory / 'reference' / str(2 ** len(kit['machines']) - 1)
+    selections = json.loads((directory / 'reference/selections.json').read_text())
+    everything = directory / 'reference' / str(len(selections))
     source_profiling = json.loads((directory / 'source/manifest.json').read_bytes()).get('profiling')
     require(type(source_profiling) is bool, 'Source package profiling must be a boolean')
     source_suffix = '.ldr' if source_profiling else '.profiling-off.ldr'
     require(everything.with_suffix(source_suffix).read_bytes() == (directory / 'source/candidate/os.ldr').read_bytes(),
             'Browser firmware for the full collection differs from the native package')
-    for index, result in enumerate(json.loads((directory / 'reference/selections.json').read_text()), 1):
+    for index, result in enumerate(selections, 1):
         prefix = directory / 'reference' / str(index)
         sections, symbols = elf32(prefix.with_suffix('.elf').read_bytes())
         module = prefix.with_suffix('.bin').read_bytes()

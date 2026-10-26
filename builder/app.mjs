@@ -19,7 +19,7 @@ $('risk-acknowledgement').disabled = !browserAllowed;
 $('risk-continue').disabled = true;
 const colors = ['var(--machine-1)', 'var(--machine-2)', 'var(--machine-3)', 'var(--machine-4)'];
 const kib = n => (n / 1024).toFixed(1) + ' KiB';
-let kit, stock, catalog, selected = [], inspected, linked, downloadUrl, built, layout, revision = 0;
+let kit, stock, catalog, selected = [], selectedExtensions = [], inspected, linked, downloadUrl, built, layout, revision = 0;
 // The machine numbers of this person's firmware (core.mjs assignNumbers): from their
 // last build here, or a layout.json they load. Kept in this browser as a convenience;
 // the layout.json in every download is the record.
@@ -43,7 +43,7 @@ function invalidate() {
   if (downloadUrl) { URL.revokeObjectURL(downloadUrl); downloadUrl = null; }
   $('download').removeAttribute('href');
   $('flow-download').removeAttribute('href');
-  document.querySelector('[data-step="3"]').disabled = true;
+  document.querySelector('[data-step="4"]').disabled = true;
 }
 function navigate(step) {
   stopAudio();
@@ -64,6 +64,8 @@ function navigate(step) {
 function ready() {
   $('choose').disabled = !(kit && stock);
   document.querySelector('.steps [data-step="2"]').disabled = !(kit && (stock || machinePreview));
+  $('choose-extensions').disabled = !(stock && selected.length);
+  document.querySelector('.steps [data-step="3"]').disabled = $('choose-extensions').disabled;
   $('build').disabled = machinePreview || !(stock && linked);
 }
 
@@ -150,9 +152,10 @@ async function acceptFirmware(file, isCurrent = () => true) {
     if (current !== ticket || !isCurrent()) return false;
     stock = recovered.stock;
     if (recovered.selected) {
-      selected = recovered.selected; renderMachines(); recalculate();
+      selected = recovered.selected; selectedExtensions = recovered.extensions ?? [];
+      renderMachines(); renderExtensions(); recalculate();
       $('firmware-result').textContent = '✓ open-xy OS with ' +
-        kit.machines.filter(m => selected.includes(m.id)).map(m => m.name).join(' + ');
+        selectionNames().join(' + ');
     } else $('firmware-result').textContent = '✓ OP–XY OS 1.2.0 verified · ' + file.name;
     wizard.setFirmwareState('loaded');
     $('files-title').focus();
@@ -369,12 +372,49 @@ function renderMachines(filter = 'all') {
     row.append(label, glyph, button); $('machines').append(row);
   });
 }
+function selectionNames() {
+  return [...kit.machines.filter(m => selected.includes(m.id)),
+    ...(kit.extensions ?? []).filter(e => selectedExtensions.includes(e.id))].map(item => item.name);
+}
+function renderExtensions() {
+  const entries = kit.extensions ?? [];
+  $('extensions').replaceChildren();
+  $('extensions-empty').hidden = entries.length !== 0;
+  for (const extension of entries) {
+    const card = node('label', undefined, 'extension-card'), input = node('input');
+    input.type = 'checkbox'; input.checked = selectedExtensions.includes(extension.id);
+    input.setAttribute('aria-label', extension.name);
+    const details = node('div');
+    details.append(node('h2', extension.name), node('p', extension.description),
+      node('p', extension.gesture, 'extension-gesture'));
+    const conflict = entries.find(e => e.id !== extension.id && selectedExtensions.includes(e.id) &&
+      e.record_double_tap && extension.record_double_tap);
+    if (conflict && !input.checked) {
+      input.disabled = true;
+      const message = node('p', 'Uses the same shortcut as ' + conflict.name + '. Deselect it first.', 'extension-conflict');
+      message.id = 'conflict-' + extension.id; input.setAttribute('aria-describedby', message.id); details.append(message);
+    }
+    input.onchange = () => {
+      selectedExtensions = Core.extensionSelection(kit, input.checked ? [...selectedExtensions, extension.id]
+        : selectedExtensions.filter(id => id !== extension.id));
+      invalidate(); renderExtensions(); recalculate();
+      document.querySelector('#extensions input[aria-label="' + CSS.escape(extension.name) + '"]')?.focus();
+    };
+    card.append(input, details); $('extensions').append(card);
+  }
+}
 function recalculate() {
   linked = null; $('selection-count').textContent = selected.length + ' selected';
+  $('extension-count').textContent = selectedExtensions.length ? selectedExtensions.length + ' selected' : 'None selected';
+  facts($('build-selection'), {
+    Machines: kit.machines.filter(m => selected.includes(m.id)).map(m => m.name).join(', ') || 'None',
+    Extensions: (kit.extensions ?? []).filter(e => selectedExtensions.includes(e.id)).map(e => e.name).join(', ') || 'None',
+  });
+  $('extension-memory').textContent = '';
   $('memory-map').replaceChildren(); $('memory-legend').replaceChildren();
   try {
     if (!selected.length) { $('room-value').textContent = 'Choose at least one machine'; $('capacity-details').replaceChildren(); ready(); return; }
-    linked = Core.linkKit(kit, selected, numbers);
+    linked = Core.linkKit(kit, selected, numbers, selectedExtensions);
     const allocations = kit.machines.filter(m => selected.includes(m.id)).map(m => ({name: m.name,
       size: linked.segments.filter(s => s.owner === m.id).reduce((n, s) => n + s.size, 0),
       color: colors[kit.machines.indexOf(m) % colors.length]}));
@@ -386,25 +426,27 @@ function recalculate() {
       const legend = node('span', a.name + ' ' + kib(a.size)); legend.style.setProperty('--swatch', a.color); $('memory-legend').append(legend);
     }
     $('room-value').textContent = kib(linked.sizes.allocated) + ' of ' + kib(Core.moduleBytes(kit.profile)) + ' used';
+    $('extension-memory').textContent = $('room-value').textContent;
     $('memory-map').setAttribute('aria-label', allocations.map(a => a.name + ': ' + kib(a.size)).join(', '));
     facts($('capacity-details'), {'Code and data': kib(linked.sizes.initialized),
       'Working memory': kib(linked.sizes.bss),
       'Available': kib(linked.sizes.available)});
     status();
-  } catch (error) { $('room-value').textContent = 'Selection cannot be built'; fail(error); }
+  } catch (error) { $('room-value').textContent = 'Selection cannot be built'; $('extension-memory').textContent = error.message; fail(error); }
   ready();
 }
 async function build() {
   if (machinePreview || !acknowledged) return;
   const ticket = revision; $('build').disabled = true; status('Linking and checking your build…');
   try {
-    const selection = [...selected], result = Core.linkKit(kit, selection, numbers);
+    const selection = [...selected], extensions = Core.extensionSelection(kit, selectedExtensions);
+    const result = Core.linkKit(kit, selection, numbers, extensions);
     const files = await Core.buildAssets(kit, selection, catalog, result.numbers);
     files['os.ldr'] = await Core.patchFirmware(kit, result, stock, {profiling: false});
     const hashes = {};
     for (const [name, bytes] of Object.entries(files)) hashes[name] = await Core.sha256(bytes);
     // Every number this firmware has given out, for the next build (Core.readLayout).
-    const nextLayout = {format: 'opxy-layout/1', profile: kit.profile.id, selected: selection, machines: result.numbers};
+    const nextLayout = {format: 'opxy-layout/1', profile: kit.profile.id, selected: selection, extensions, machines: result.numbers};
     const encode = value => new TextEncoder().encode(JSON.stringify(value, null, 2) + '\n');
     files['layout.json'] = encode(nextLayout);
     files['build.json'] = encode({format: 'opxy-kit-build/1', version: kit.version, source_sha256: kit.profile.stock_sha256,
@@ -413,15 +455,16 @@ async function build() {
     if (ticket !== revision) return;
     layout = nextLayout; built = files; rememberNumbers(result.numbers); downloadUrl = URL.createObjectURL(new Blob([zip], {type: 'application/zip'}));
     $('download').href = $('flow-download').href = downloadUrl;
-    $('download-summary').textContent = kit.machines.filter(m => selection.includes(m.id)).map(m => m.name).join(' + ');
+    $('download-summary').textContent = selectionNames().join(' + ') + (extensions.length ? '' : ' · No extensions');
     $('bundle-art').replaceChildren(Visuals.bundle(Object.keys(files)));
     $('output-hash').textContent = 'OS (os.ldr) SHA-256: ' + hashes['os.ldr'];
-    document.querySelector('.steps [data-step="3"]').disabled = false;
-    status(); navigate(3);
+    document.querySelector('.steps [data-step="4"]').disabled = false;
+    status(); navigate(4);
   } catch (error) { if (ticket === revision) fail(error); } finally { ready(); }
 }
 document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => navigate(Number(b.dataset.step)));
 $('choose').onclick = () => { navigate(2); recalculate(); };
+$('choose-extensions').onclick = () => { navigate(3); recalculate(); };
 $('build').onclick = build;
 $('firmware').onchange = e => acceptFirmware(e.target.files[0]);
 const drop = $('firmware-drop');
@@ -437,9 +480,12 @@ $('restore').onchange = async e => {
   try {
     const saved = JSON.parse(new TextDecoder().decode(await readBounded(e.target.files[0], 65536)));
     const loaded = Core.readLayout(kit, saved);
+    const extensions = Core.extensionSelection(kit, saved.extensions);
+    if (loaded.selected) Core.linkKit(kit, loaded.selected, loaded.machines, extensions);
+    selectedExtensions = extensions;
     rememberNumbers(loaded.machines);
     if (loaded.selected) selected = [...loaded.selected];
-    invalidate(); renderMachines(); recalculate();
+    invalidate(); renderMachines(); renderExtensions(); recalculate();
     status('Layout loaded: your machines keep their numbers.');
   } catch (error) { fail(error); }
 };
@@ -463,6 +509,6 @@ try {
   catalog = Core.decode64(kit.stockCatalog);
   $('notices').textContent = kit.notices;
   $('notices').closest('details').hidden = false;
-  sizeMachineSummary(); renderMachines(); inspect(kit.machines[0].id); recalculate();
+  sizeMachineSummary(); renderMachines(); renderExtensions(); inspect(kit.machines[0].id); recalculate();
 } catch (error) { fail(error); }
 openPreviewLink();

@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from test_sample_services import HOST_CXX
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,13 @@ class RecordingHistory(unittest.TestCase):
         hidden = dict(creationflags=subprocess.CREATE_NO_WINDOW) if os.name == 'nt' else {}
         with tempfile.TemporaryDirectory(prefix='recording-history-') as folder:
             binary = Path(folder) / ('history.exe' if os.name == 'nt' else 'history')
+            if name == 'extension_selection':
+                from tooling.extensions import generate_collection
+                with mock.patch('tooling.extensions.collection', return_value=[
+                    dict(id='capture', record_double_tap=True, edit_notes=True),
+                    dict(id='observer', record_double_tap=False, edit_notes=False),
+                ]):
+                    generate_collection(Path(folder))
             if name == 'ghost_capture':
                 platform = ROOT / 'sdk/platform/opxy-1.2.0'
                 stock = (platform / 'stock.hpp').read_text()
@@ -42,8 +50,9 @@ class RecordingHistory(unittest.TestCase):
                 (Path(folder) / 'stock.hpp').write_text(stock)
                 (Path(folder) / 'ghost_capture_stock.cpp').write_text((platform / 'ghost_capture_stock.cpp').read_text().replace(
                     '#include "../extension_runtime.hpp"', '#include <extension_runtime.hpp>'))
-                from tooling.extensions import generate_collection
+                from tooling.extensions import generate_collection, generate_extension
                 generate_collection(Path(folder))
+                generate_extension(Path(folder), 'capture')
             command = [HOST_CXX, '-std=c++11', '-O2', '-Wall', '-Wextra', '-Werror',
                        '-I' + str(folder), '-I' + str(ROOT / 'sdk/include'), '-I' + str(ROOT / 'sdk/platform'),
                        '-I' + str(ROOT / 'sdk/platform/opxy-1.2.0'),
@@ -64,3 +73,6 @@ class RecordingHistory(unittest.TestCase):
 
     def test_extension_observers_order_and_write_ownership(self):
         self.run_fixture('extension_runtime')
+
+    def test_generated_registry_omits_disabled_extensions_and_preserves_order(self):
+        self.run_fixture('extension_selection')

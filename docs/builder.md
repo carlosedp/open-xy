@@ -41,7 +41,11 @@ leaves the browser.
    link to the machine's code at the commit the catalog pins. Open-XY's own
    example machines from the catalog are labelled as Open-XY machines. A
    [personal kit](#export-a-kit)'s own machines are marked **Yours**.
-4. Follow the installation guide using the remembered computer choice. Mac
+4. Choose optional extensions. Each card explains the behavior and its gesture.
+   Extensions start off; continuing with none is valid. The summary lists your
+   machines, extensions and combined memory use. Conflicting Record-double-tap
+   claims cannot be selected together.
+5. Build the firmware, then follow the installation guide using the remembered computer choice. Mac
    browsers with WebUSB send the files directly; Windows downloads a ZIP to
    copy with File Explorer. The OS write step on the device is still manual.
 
@@ -63,7 +67,9 @@ choose one on its sample page. Ring Mod is a send effect and has no preset.
 The builder accepts only the exact stock file or an exact Open-XY output of the
 same collection. Encrypted `.tfw`, unknown patches and damaged files are
 rejected. Opening an Open-XY build restores its machine selection by rebuilding
-the stock image from it; projects, presets and samples on the device are not
+the stock image from it, including the extension selection. Saved selection files
+also retain extensions; older selection files without that field retain the kit's
+full extension collection. Projects, presets and samples on the device are not
 touched.
 
 ### Dev menu
@@ -217,12 +223,18 @@ sections, COMMON or weak symbols, unresolved imports, overlapping relocations,
 range overflow, constructors and memory overflow are errors. A deselected
 machine's startup and catalog callbacks resolve to `kit_absent`, which declines:
 startup skips it and its menu name is left to stock. Its audio code and state
-are omitted.
+are omitted. Extensions use the same omission mechanism: a generated accessor
+returns their callback descriptor, or resolves to `kit_absent` when deselected.
+The registry skips absent descriptors and retains collection order. Deselected
+extensions contribute no code or state; shared controller hooks still forward
+stock behavior with an empty extension registry. Export a fresh kit after this
+SDK change; older kits containing the fixed extension registry are rejected.
 
 The export checks, normally and under `python -O`, that:
 
 - selecting every machine reproduces the native `os.ldr` byte for byte;
-- every non-empty selection matches GNU ld, including symbols and BSS;
+- every non-empty machine selection with every extension subset (including none)
+  matches GNU ld, including symbols and BSS;
 - browser output matches the Python writer, with correct catalog, artwork and ZIP;
 - every output is recognized and its selection restored, and corruption inside
   or outside the allowed edits is rejected.

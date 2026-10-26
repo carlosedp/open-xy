@@ -19,9 +19,9 @@ own stock `os.ldr`, without installing anything.
 against `staging`.** It is the development branch; `main` receives reviewed
 releases from `staging`. See the [contributor workflow](CONTRIBUTING.md#branch-workflow).
 
-Firmware builds also keep a live-note ghost pattern for the selected instrument
-track. Double-tap Record to insert the performance at its original loop
-positions; **captured** confirms insertion. Stop preserves a partial take, while
+With Retrospective capture enabled, firmware keeps a live-note ghost pattern for
+the selected instrument track. Double-tap Record to insert the performance at
+its original loop positions; **captured** confirms insertion. Stop preserves a partial take, while
 starting playback again clears it. Changing tracks, patterns, projects, track
 length, scale or quantization clears the ghost pattern. Notes survive loop wraps
 and silence; later playing replaces nearby same-pitch notes as in stock recording.

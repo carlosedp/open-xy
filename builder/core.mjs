@@ -234,7 +234,18 @@ export const chosenByDefault = m => m.origin !== 'catalog';
 export const sourceUrl = source => source.repository + '/tree/' + source.commit;
 export const sourceName = source => source.repository.slice('https://github.com/'.length);
 
-// Memory every machine shares: the reservation below the relocated stock tables.
+// Validate choices and retain the SDK's declared callback order.
+export function extensionSelection(kit, selection = (kit.extensions ?? []).map(e => e.id)) {
+  const entries = kit.extensions ?? [];
+  check(Array.isArray(selection) && new Set(selection).size === selection.length &&
+    selection.every(id => entries.some(e => e.id === id)), 'Choose each available extension once.');
+  const selected = entries.filter(e => selection.includes(e.id));
+  check(selected.filter(e => e.record_double_tap).length <= 1,
+    'These extensions both use Record double-tap. Choose only one.');
+  return selected.map(e => e.id); // Collection order, never checkbox order.
+}
+
+// Memory every machine and extension shares, below the relocated stock tables.
 export const moduleBytes = profile => profile.reserved_bytes - profile.table_bytes;
 const screenTemplateOk = async kit => typeof kit.screenTemplate === 'string' &&
   await sha256(utf8.encode(kit.screenTemplate)) === kit.profile.screen_template_sha256;
@@ -249,6 +260,18 @@ export async function openKit(kit) {
     'Firmware edit profile is not the reviewed profile');
   checkNumbers(kit);
   check(kit.machines.every(validOrigin), 'Invalid machine origin or source');
+  const extensions = kit.extensions ?? [];
+  check(Array.isArray(extensions) && extensions.length <= 16, 'Invalid extension collection');
+  check(!kit.objects.some(o => o.name === 'sdk/extension_collection.o') || Array.isArray(kit.extensions),
+    'This kit predates extension selection. Export a new kit to choose extensions.');
+  const extensionIds = new Set();
+  for (const e of extensions) {
+    check(e && /^[a-z][a-z0-9_]{0,31}$/.test(e.id) && !extensionIds.has(e.id) &&
+      ['name', 'description', 'gesture'].every(key => typeof e[key] === 'string' && e[key].length > 0 && e[key].length <= 600) &&
+      typeof e.record_double_tap === 'boolean' && typeof e.edit_notes === 'boolean' &&
+      (!e.edit_notes || e.record_double_tap), 'Invalid extension metadata');
+    extensionIds.add(e.id);
+  }
   // The bundled stock menu is authenticated where it is used (buildAssets).
   check(typeof kit.stockCatalog === 'string' && kit.stockCatalog.length <= 2 * 1024 ** 2, 'Missing bundled stock menu');
   check(await screenTemplateOk(kit), 'Platform screen template differs from the supported ABI');
@@ -258,10 +281,17 @@ export async function openKit(kit) {
     check(!names.has(o.name) && (o.owner === null || ids.has(o.owner)), 'Duplicate or unowned object');
     check(o.service === undefined || (o.owner === null && Object.hasOwn(kit.profile.services ?? {}, o.service)),
       'Undeclared service: ' + o.service);
+    check(o.extension === undefined || (o.owner === null && o.service === undefined && extensionIds.has(o.extension)),
+      'Undeclared extension object');
     names.add(o.name);
     const bytes = decode64(o.bytes);
     check(await sha256(bytes) === o.sha256, 'Curated object hash mismatch: ' + o.name);
     objects.push({...o, ...readObject(bytes)});
+  }
+  for (const id of extensionIds) {
+    const owned = objects.filter(o => o.extension === id);
+    check(owned.length === 1 && owned[0].symbols.some(s => s.section && s.binding === 1 &&
+      s.name === 'sdk_extension_' + id + '_hooks'), 'Missing extension accessor: ' + id);
   }
   return {...kit, objects};
 }
@@ -273,14 +303,16 @@ export function activeServices(profile, machines) {
     .filter(([, kinds]) => machines.some(m => kinds.includes(m.kind))).map(([name]) => name));
 }
 
-export function linkKit(kit, selection, layout = null) {
+export function linkKit(kit, selection, layout = null, extensionIds) {
+  const extensions = new Set(extensionSelection(kit, extensionIds));
   check(Array.isArray(selection) && selection.length > 0 && new Set(selection).size === selection.length &&
     selection.every(id => kit.machines.some(m => m.id === id)), 'Choose each machine once.');
   const numbers = assignNumbers(kit, selection, layout);
   const definitions = {...kit.definitions, ...numberSymbols(kit, selection, numbers)};
   const selected = new Set(selection), limit = moduleBytes(kit.profile);
   const services = activeServices(kit.profile, kit.machines.filter(m => selected.has(m.id)));
-  const objects = kit.objects.filter(o => o.owner === null ? !o.service || services.has(o.service) : selected.has(o.owner));
+  const objects = kit.objects.filter(o => (o.extension === undefined || extensions.has(o.extension)) &&
+    (o.owner === null ? !o.service || services.has(o.service) : selected.has(o.owner)));
   const globals = new Map(Object.entries(definitions)), placements = new Map(), segments = [];
   let cursor = kit.profile.module_base, initializedEnd;
   for (const group of ['text', 'rodata', 'data', 'bss']) {
@@ -319,6 +351,11 @@ export function linkKit(kit, selection, layout = null) {
   // SDK objects may import the declared callbacks of unselected machines;
   // those resolve to the declared fallbacks. Machine objects never do.
   const aliases = new Map();
+  for (const e of kit.extensions ?? []) if (!extensions.has(e.id)) {
+    const symbol = 'sdk_extension_' + e.id + '_hooks';
+    check(!globals.has(symbol) && globals.has('kit_absent'), 'Invalid absent-extension accessor');
+    aliases.set(symbol, globals.get('kit_absent'));
+  }
   for (const m of kit.machines) if (!selected.has(m.id)) {
     for (const [symbol, fallback] of Object.entries(m.absent)) {
       check(!globals.has(symbol) && globals.has(fallback), 'Invalid absent-machine callback');
@@ -333,7 +370,7 @@ export function linkKit(kit, selection, layout = null) {
     for (const r of o.relocations) {
       const sym = o.symbols[r.symbol], address = placements.get(o.name + ':' + r.section) + r.offset;
       const S = sym.section ? definedValue(o, sym) : globals.get(sym.name) ??
-        (o.owner === null ? aliases.get(sym.name) : undefined);
+        (o.owner === null && o.extension === undefined ? aliases.get(sym.name) : undefined);
       check(S !== undefined, 'Unresolved import: ' + sym.name);
       const value = S + r.addend, offset = address - kit.profile.module_base;
       check(Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff, 'Symbol arithmetic overflow');
@@ -350,7 +387,7 @@ export function linkKit(kit, selection, layout = null) {
       }
     }
   }
-  return {module, globals, aliases, objects, segments, services, numbers, definitions,
+  return {module, globals, aliases, objects, segments, services, extensions: [...extensions], numbers, definitions,
     sizes: {initialized, bss: cursor - bssStart, allocated, available: limit - allocated}};
 }
 
@@ -459,14 +496,14 @@ export async function patchFirmware(kit, linked, stock, {profiling = true} = {})
 
 // Recover only an exact output of this curated collection. The uploaded module
 // is compared with freshly linked code, never executed or reused for a build.
-const RECOVERABLE_MACHINES = 10;
+const RECOVERABLE_CHOICES = 10;
 export async function recoverFirmware(kit, input, layout = null) {
   const p = kit.profile;
   if (input.length === p.stock_bytes && await sha256(input) === p.stock_sha256) {
     readLdr(input);
     return {stock: input.slice(), selected: null};
   }
-  check(kit.machines.length <= RECOVERABLE_MACHINES, 'This open-xy OS can’t be recognized. Choose the original OP–XY OS 1.2.0.');
+  check(kit.machines.length + (kit.extensions?.length ?? 0) <= RECOVERABLE_CHOICES, 'This open-xy OS can’t be recognized. Choose the original OP–XY OS 1.2.0.');
   const blocks = readLdr(input), first = blocks[0], module = blocks.at(-2), final = blocks.at(-1);
   check(blocks.length === p.stock_records + 1 && first.count === 0 &&
     (first.code & 0xffff) === 0x5004 && first.argument === input.length - 16 &&
@@ -483,24 +520,25 @@ export async function recoverFirmware(kit, input, layout = null) {
     'Only OP–XY OS 1.2.0 is supported. This open-xy OS was not made from OS 1.2.0.');
   const payload = input.subarray(module.offset + 16, final.offset);
   // Reconstruct every selection's entire image; never trust the uploaded
-  // module or infer ownership from its label. At most 1,023 deterministic links,
-  // each under a millisecond.
+  // module or infer ownership from its label. Bound the combined choice count.
   // Yield between candidates so file changes and navigation remain responsive;
   // the caller discards stale results.
   for (let mask = 1; mask < 2 ** kit.machines.length; mask++) {
     const selected = kit.machines.filter((_, i) => mask & 2 ** i).map(m => m.id);
-    const linked = linkKit(kit, selected, layout);
-    if (equal(linked.module, payload)) {
-      // SDK builds retain timing; site builds omit the per-voice bookkeeping.
-      // Accept only a complete reconstruction of one mode, never mixed hooks.
-      for (const profiling of [true, false]) {
-        if (equal(await patchFirmware(kit, linked, stock, {profiling}), input))
-          return {stock, selected};
+    for (let extMask = 0; extMask < 2 ** (kit.extensions?.length ?? 0); extMask++) {
+      const extensions = (kit.extensions ?? []).filter((_, i) => extMask & 2 ** i).map(e => e.id);
+      if ((kit.extensions ?? []).filter(e => extensions.includes(e.id) && e.record_double_tap).length > 1) continue;
+      const linked = linkKit(kit, selected, layout, extensions);
+      if (equal(linked.module, payload)) {
+        for (const profiling of [true, false]) {
+          if (equal(await patchFirmware(kit, linked, stock, {profiling}), input))
+            return {stock, selected, extensions};
+        }
       }
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
-    await new Promise(resolve => setTimeout(resolve, 0));
   }
-  throw new Error('This open-xy OS has machines this site doesn’t offer. Choose the original OP–XY OS 1.2.0.');
+  throw new Error('This open-xy OS has machines or extensions this site doesn’t offer. Choose the original OP–XY OS 1.2.0.');
 }
 
 export function presetPath(machine) {

@@ -19,7 +19,17 @@ null. Put its implementation and private helpers in that directory. Add its ID
 to [`profiles/extensions.json`](../profiles/extensions.json), with
 `record_double_tap` and `edit_notes` booleans. The builder compiles the selected
 extensions, validates their source boundary and records their sources and
-selection in package provenance. Browser kits include these linked objects.
+selection in package provenance. Add an `extension.json` beside the source with
+three nonempty text fields: `name`, `description` and `gesture`. These provide
+the browser selection card; the description should explain changes to stock
+behavior and when the extension clears its state.
+
+Native builds include the declared collection. Browser kits export those objects
+as individually selectable extensions. The browser's Extensions step follows
+Machines, starts with none selected, and saves choices with the machine selection.
+It omits unselected extension objects entirely. The generated registry skips their
+absent accessors; shared SDK hooks retain their normal stock forwarding. Only the
+SDK defines those accessors and firmware hooks.
 
 The array defines callback order. All observers receive the same immutable
 event in that order. There is no priority guessing or registration during
