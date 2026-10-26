@@ -489,7 +489,7 @@
       "file_offset": "0xe9236",
       "length": 8,
       "before": "00de588db45e0000",
-      "symbol": "sdk_sample_ui_engine",
+      "symbol": "sdk_sample_controller_engine",
       "service": "samples",
       "call": true
     },
@@ -1040,6 +1040,16 @@
       "length": 4,
       "before": "fee39176",
       "symbol": "sdk_benchmark_run",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "address": "0x8d5ab274",
+      "file_offset": "0x1e264c",
+      "length": 4,
+      "before": "00e36254",
+      "symbol": "sdk_sample_parameter_kind",
+      "service": "samples",
       "call": true
     },
     {
