@@ -738,6 +738,86 @@
       "call": true
     },
     {
+      "kind": "hook",
+      "name": "LFO destination range on Element selector initialization",
+      "address": "0x8d53ec60",
+      "file_offset": "0x17603c",
+      "length": 4,
+      "before": "fce340c6",
+      "symbol": "sdk_lfo_range",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "LFO destination range on Element page",
+      "address": "0x8d53ef50",
+      "file_offset": "0x17632c",
+      "length": 4,
+      "before": "fce3c8c4",
+      "symbol": "sdk_lfo_range",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "LFO destination range on Random page",
+      "address": "0x8d53ff32",
+      "file_offset": "0x17730e",
+      "length": 4,
+      "before": "fce3d7bc",
+      "symbol": "sdk_lfo_range",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "LFO destination range on Value page",
+      "address": "0x8d5426b8",
+      "file_offset": "0x179a94",
+      "length": 4,
+      "before": "fce314a9",
+      "symbol": "sdk_lfo_range",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "LFO destination stepping in parameter locks",
+      "address": "0x8d5ab7ea",
+      "file_offset": "0x1e2bc2",
+      "length": 4,
+      "before": "ffe317ff",
+      "symbol": "sdk_lfo_step",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "LFO destination stepping in live controls",
+      "address": "0x8d5ab8ce",
+      "file_offset": "0x1e2ca6",
+      "length": 4,
+      "before": "ffe3a5fe",
+      "symbol": "sdk_lfo_step",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "LFO engine destination audio routing",
+      "address": "0x11a03f20",
+      "file_offset": "0xa994",
+      "length": 8,
+      "before": "00de518dd4820000",
+      "symbol": "sdk_lfo_audio",
+      "call": true
+    },
+    {
+      "kind": "hook",
+      "name": "Synth engine page titles follow alternate selection",
+      "address": "0x8d545b2e",
+      "file_offset": "0x17cf0a",
+      "length": 4,
+      "before": "fee36705",
+      "symbol": "sdk_synth_title",
+      "call": true
+    },
+    {
       "kind": "startup",
       "name": "Boot-screen version label",
       "address": "0x8c0b9114",
