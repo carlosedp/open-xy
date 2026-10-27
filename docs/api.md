@@ -148,6 +148,15 @@ edited. See
 [Macro Osc](https://github.com/etcetc000/open-xy-core-machines/blob/main/machines/macroosc/definition.json),
 whose header shows one page and whose row of text slots under it the other.
 
+A synth may instead declare `"shift": "row"` (SDK 1.4) to reach its alternates
+as the stock engines with more than four parameters do: Shift + encoder k edits
+parameter 5 + k (slot 4 + k), which must name `"control": k`, so the alternates
+follow their positions in order from the first. While Shift is held on the
+engine page, those positions' titles, values and `shown` follow the Shift row;
+presses select nothing. A position without a Shift-row parameter keeps Shift's
+fine turns, and a Shift-row position has no fine turn for its own parameter.
+`"shift"` and `"press"` cannot be combined.
+
 On instrument tracks, the Value, Random and Element LFOs can target every
 declared parameter of a custom synth or sample engine, including all eight
 when present. Destination names follow parameter order regardless of which
@@ -452,7 +461,7 @@ preset entries, its screen file, its symbol prefix and its C++ namespace. It is 
 | Field | Contract |
 | --- | --- |
 | `schema` | 1 |
-| `sdk` | The SDK version the machine targets, `"<major>.<minor>"`. This SDK is 1.3 and builds 1.0 to 1.3 machines |
+| `sdk` | The SDK version the machine targets, `"<major>.<minor>"`. This SDK is 1.4 and builds 1.0 to 1.4 machines |
 | `kind` | `synth`, `sample` or `effect` |
 | `description` | Plain text of at most 160 characters, shown by the builder and preview |
 | `identity` | The numbers it asks for: `{"engine": n, "page": p}`, or `{"effect": n, "page": 21}` for an effect; see below |

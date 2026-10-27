@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 
 from .benchmark import append_callback
-from .definitions import ROOT, control_positions, paged, validate_definition
+from .definitions import ROOT, control_positions, paged, shift_row, validate_definition
 from .formats import require
 from .stock_tables import REGISTRATION as RELOCATED
 
@@ -336,8 +336,9 @@ def generate_synth_controls(directory, machines):
         body.extend(['    default: return false;', '    }', '}'])
         formatters.append('\n'.join(body))
         page = not effect and paged(m.definition)
+        shift = 0 if effect else shift_row(m.definition)
         rows.append(f"    {{{id_symbol}, {m.prefix}_ready, {{{', '.join(map(str, following))}}}, {continuous}, {m.prefix}_format, "
-                    f"{'true' if effect else 'false'}, {'true' if page else 'false'}}},")
+                    f"{'true' if effect else 'false'}, {'true' if page else 'false'}, {shift}}},")
     return expand('synth_control_table.cpp.in', dict(READY_DECLS='\n'.join(declarations), MACHINES='\n'.join(rows), FORMATTERS='\n'.join(formatters), LFO_MACHINES='\n'.join(lfo_rows)),
                   Path(directory) / 'synth_control_table.cpp')
 

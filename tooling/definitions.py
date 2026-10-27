@@ -104,9 +104,21 @@ def paged(definition):
     return definition.get('press') == 'page'
 
 
+def shift_row(definition):
+    """The positions whose Shift turn edits their alternate, as a bit mask (`"shift": "row"`, SDK 1.4).
+
+    As on stock engines with more than four parameters, Shift + encoder k edits
+    parameter slot 4 + k: the alternate that names position k. Positions
+    without one keep Shift's fine turns. 0 when the synth does not declare it.
+    """
+    if definition.get('shift') != 'row':
+        return 0
+    return sum(1 << control for control in control_positions(definition)[SYNTH_POSITIONS:])
+
+
 def validate_definition(value, kind):
-    keys(value, ('schema', 'id', 'name', 'parameters', 'presets', 'resources', *(('press',) if 'press' in value else ())),
-         'definition')
+    keys(value, ('schema', 'id', 'name', 'parameters', 'presets', 'resources',
+                 *(k for k in ('press', 'shift') if k in value)), 'definition')
     require(type(value['schema']) is int and value['schema'] == 1, 'Unknown definition schema')
     stock_name(value['id']); label(value['name'])
     resources = value['resources']
@@ -156,6 +168,14 @@ def validate_definition(value, kind):
         require(kind == 'synth' and value['press'] == 'page' and len(parameters) == 8 and
                 sorted(control_positions(value)[SYNTH_POSITIONS:]) == list(range(SYNTH_POSITIONS)),
                 '"press": "page" is for a synth with eight parameters: each position has exactly one alternate')
+    # A Shift row is stock's: Shift + encoder k edits slot 4 + k, so each
+    # alternate sits at the slot of the position it names, in position order.
+    if 'shift' in value:
+        alternates = control_positions(value)[SYNTH_POSITIONS:]
+        require(kind == 'synth' and value['shift'] == 'row' and 'press' not in value and alternates and
+                alternates == list(range(len(alternates))),
+                '"shift": "row" is for a synth with alternates in position order, without "press": '
+                'Shift + encoder k edits parameter 5 + k, which names "control": k')
     require(isinstance(value['presets'], dict) and len(value['presets']) <= 64, 'Invalid presets')
     for name, preset in value['presets'].items():
         label(name); keys(preset, names, 'preset')

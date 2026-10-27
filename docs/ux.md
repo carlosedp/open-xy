@@ -42,6 +42,12 @@ is the reference for each of them.
   | Fill | `#5A5A5A` | `#707070` |
 
   Keep the rest of the artwork below about 38 px.
+- **Or a Shift row, as the stock engines have.** A synth with one to four
+  extra parameters may put them on Shift + encoder instead
+  ([`"shift": "row"`](api.md#alternate-controls)), each under the encoder whose
+  position it names. Holding Shift shows them in the header. Give that row the
+  settings changed least often, such as a model choice, since those encoders
+  lose Shift's fine turns.
 - **Author text at its resting size.** Scaling a text slot is decoration for
   a moment of motion: a layout must read correctly at unit scale.
 

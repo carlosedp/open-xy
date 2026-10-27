@@ -10,7 +10,7 @@ import unittest
 
 from tooling.adapters import (catalog_defaults, catalog_entry, control_cycles, generate_display, generate_screen,
                                generate_synth_controls, screen_bytes)
-from tooling.definitions import ROOT, control_positions, paged, validate_definition
+from tooling.definitions import ROOT, control_positions, paged, shift_row, validate_definition
 from machine_fixtures import FOLDER, fixture
 from tooling.native import display_ids
 
@@ -210,8 +210,45 @@ class Definitions(unittest.TestCase):
                     SimpleNamespace(kind='synth', prefix='plain', identity=dict(engine=5), definition=self.engine)]
         with tempfile.TemporaryDirectory() as directory:
             text = generate_synth_controls(directory, machines).read_text(encoding='utf-8')
-        self.assertEqual(re.findall(r'^    \{(\w+)_engine_id, .*, (true|false)\},$', text, re.M),
+        self.assertEqual(re.findall(r'^    \{(\w+)_engine_id, .*, (true|false), \d+\},$', text, re.M),
                          [('paged', 'true'), ('plain', 'false')])
+
+    def test_a_shift_row_puts_alternates_on_stock_shift_encoders(self):
+        value = copy.deepcopy(self.engine)
+        value['parameters'] += [self.alternate(0, 'p0'), self.alternate(1, 'p1')]
+        for preset in value['presets'].values():
+            preset.update(p0=0, p1=0)
+        value['shift'] = 'row'
+        validate_definition(value, 'synth')
+        # Shift + encoder k edits slot 4 + k: positions 0 and 1 have theirs.
+        self.assertEqual((shift_row(value), shift_row(self.engine)), (0b11, 0))
+        rejected = []
+        for bad in ('page', True, None):
+            changed = copy.deepcopy(value); changed['shift'] = bad
+            rejected.append(changed)
+        # Each alternate sits at the slot of the position it names, from position 0.
+        out_of_order = copy.deepcopy(value)
+        out_of_order['parameters'][4]['control'], out_of_order['parameters'][5]['control'] = 1, 0
+        rejected.append(out_of_order)
+        skipped = copy.deepcopy(value); skipped['parameters'][5]['control'] = 2
+        rejected.append(skipped)
+        none = copy.deepcopy(self.engine); none['shift'] = 'row'
+        rejected.append(none)
+        both = copy.deepcopy(value); both['press'] = 'page'
+        rejected.append(both)
+        for bad in rejected:
+            with self.subTest(shift=bad.get('shift'), controls=control_positions(bad)), self.assertRaises(ValueError):
+                validate_definition(bad, 'synth')
+        sample = copy.deepcopy(fixture('probesample').definition)
+        sample['shift'] = 'row'
+        with self.assertRaisesRegex(ValueError, 'shift'): validate_definition(sample, 'sample')
+        # The control table carries each synth's Shift row as a mask.
+        machines = [SimpleNamespace(kind='synth', prefix='row', identity=dict(engine=9), definition=value),
+                    SimpleNamespace(kind='synth', prefix='plain', identity=dict(engine=5), definition=self.engine)]
+        with tempfile.TemporaryDirectory() as directory:
+            text = generate_synth_controls(directory, machines).read_text(encoding='utf-8')
+        self.assertEqual(re.findall(r'^    \{(\w+)_engine_id, .*, (true|false), (\d+)\},$', text, re.M),
+                         [('row', 'false', '3'), ('plain', 'false', '0')])
 
     def test_control_table_owns_all_synths_and_preserves_alternates(self):
         alternates = copy.deepcopy(self.engine)

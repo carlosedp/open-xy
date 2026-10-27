@@ -7,8 +7,10 @@ namespace opxy { namespace platform {
 // A synth or effect. Pressing a synth encoder moves its
 // position from slot s to next[s]; each position starts on its own slot 0..3,
 // and a slot no position reaches maps to itself. A paged synth's press moves
-// all four positions, switching between its two pages. In a browser kit an
-// unselected machine's ready resolves to a function returning 0.
+// all four positions, switching between its two pages. A synth with a Shift
+// row (bit k of shift_row) edits and shows slot 4 + k at position k while
+// Shift is held, as stock routes Shift's row, and its presses select nothing.
+// In a browser kit an unselected machine's ready resolves to a function returning 0.
 struct SynthControls {
     const char* id;  // absolute symbol: the engine or effect ID, supplied at link time
     int (*ready)();
@@ -17,6 +19,7 @@ struct SynthControls {
     bool (*format)(u32 slot, i32 value, char* text);
     bool effect;
     bool page;
+    u8 shift_row;
     u32 engine() const { return static_cast<u32>(reinterpret_cast<__UINTPTR_TYPE__>(id)); }
 };
 // GUI-only, bounded one-decimal formatting. Caller provides 16 bytes.
@@ -30,7 +33,8 @@ extern "C" {
 extern const opxy::platform::SynthControls sdk_synth_controls[] __asm__("sdk_synth_controls");
 extern const opxy::u32 sdk_synth_control_count __asm__("sdk_synth_control_count");
 // The parameter slot each of a track's four page positions edits and shows:
-// 0..3 unless an owned synth's encoder press selected an alternate. GUI only.
+// 0..3 unless an owned synth's encoder press selected an alternate, or Shift
+// is held at one of its Shift-row positions. GUI only.
 void sdk_synth_shown(opxy::u32 track, opxy::u8* shown) __asm__("sdk_synth_shown");
 bool sdk_synth_value(opxy::u32 track, opxy::u32 slot, opxy::i32 value, char* text) __asm__("sdk_synth_value");
 // The slot shown at page position `index` while engine is the selected track's

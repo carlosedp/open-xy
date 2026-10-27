@@ -1,7 +1,9 @@
 // Stock OS 1.2.0 instrument-track encoders for synths with alternate controls.
 // Both hooks replace a CALL.A of a C function, so stock calls them with the C
 // ABI. A press of an owned synth's encoder selects the position's next
-// parameter; a turn edits the selected one. Everything else reaches stock as before.
+// parameter; a turn edits the selected one. A synth with a Shift row instead
+// keeps stock's routing: Shift + encoder k edits slot 4 + k, and presses
+// select nothing. Everything else reaches stock as before.
 #include "synth_controls.hpp"
 #include <opxy/effect.hpp>
 #include "stock.hpp"
@@ -35,9 +37,22 @@ const SynthControls* owned(u32 engine, bool effect = false) {
 }
 
 // The slot each position shows, per track, while the track keeps an owned
-// engine. Engine 0 is never a synth, so zeroed state starts on slots 0..3.
-struct Track { u32 engine; u8 slots[opxy::page_controls]; };
+// engine, and that engine's Shift row. Engine 0 is never a synth, so zeroed
+// state starts on slots 0..3.
+struct Track { u32 engine; u8 slots[opxy::page_controls]; u8 shift_row; };
 Track tracks[kTracks];
+
+// Shift held on the instrument controller's engine page, where stock turns
+// Shift's row of encoders into slots 4..7.
+bool shift_row_held() {
+    return top_controller_vtable() == kInstrumentController && word(kInstrumentPage) == 0 && shift_held();
+}
+
+// The slot position `position` shows: its Shift-row slot while Shift is held,
+// otherwise its selection.
+u32 visible(const Track& t, u32 position) {
+    return (t.shift_row >> position & 1) && shift_row_held() ? 4 + position : t.slots[position];
+}
 
 Track* state(u32 track, u32 engine) {
     if (track >= kTracks) return nullptr;
@@ -56,12 +71,13 @@ const SynthControls* machine(u32 track, Track*& t) {
     const u32 engine = track_engine(track);
     const SynthControls* m = owned(engine);
     t = state(track, m ? engine : 0);
+    t->shift_row = m ? m->shift_row : 0;
     return m;
 }
 
 u32 shown(u32 track, u32 position) {
     Track* t;
-    return position < opxy::page_controls && machine(track, t) ? t->slots[position] : position;
+    return position < opxy::page_controls && machine(track, t) ? visible(*t, position) : position;
 }
 }
 
@@ -73,7 +89,7 @@ void sdk_synth_shown(u32 track, u8* slots) {
 u32 sdk_synth_title_slot(u32 engine, u32 index) {
     const u32 track = byte(kSelectedTrack);
     if (track >= kTracks || index >= opxy::page_controls || !engine || tracks[track].engine != engine) return index;
-    return tracks[track].slots[index];
+    return visible(tracks[track], index);
 }
 
 // 8d545b2e: only the engine screen's four titles follow alternate selection.
@@ -86,13 +102,14 @@ const char* sdk_synth_title(u32 engine, u32 index) {
 // codes 10..13, released without a turn and without shift) before passing it
 // to the top controller; the instrument controller's engine page ignores it
 // for every engine with alternates. On that page of an owned synth the click
-// also selects the position's next parameter, or every position's on a paged synth.
+// also selects the position's next parameter, or every position's on a paged
+// synth; a synth with a Shift row reaches its alternates through Shift instead.
 void sdk_synth_press(u32 encoder) {
     stock<void(u32)>(0x8d51e634)(encoder);
     Track* t;
     const SynthControls* m;
     if (encoder < opxy::page_controls && top_controller_vtable() == kInstrumentController &&
-        word(kInstrumentPage) == 0 && (m = machine(byte(kSelectedTrack), t))) {
+        word(kInstrumentPage) == 0 && (m = machine(byte(kSelectedTrack), t)) && !m->shift_row) {
         for (u32 i = 0; i < opxy::page_controls; ++i) {
             if (i != encoder && !m->page) continue;
             const u32 next = m->next[t->slots[i]];
@@ -109,12 +126,15 @@ u32 sdk_synth_turn(u32 project, u32 track, u32 index, u32 event) {
     Track* t;
     // The instrument controller maps Shift's engine-page row to slots 4..7.
     // Reinterpret it as fine editing of the same visible position, including
-    // an alternate selected by a click. Other pages keep stock routing.
+    // an alternate selected by a click, except at a Shift-row position, which
+    // keeps stock's routing to its alternate. Other pages keep stock routing.
     const bool fine_turn = index >= 4 && index < 8 && word(kInstrumentPage) == 0 && shift_held();
     const u32 original_index = index;
     if (fine_turn) index -= 4;
     const SynthControls* m = index < opxy::page_controls ? machine(track, t) : nullptr;
-    if (m) {
+    if (m && fine_turn && (m->shift_row >> index & 1)) {
+        index = original_index;
+    } else if (m) {
         index = t->slots[index];
         if (event && (m->continuous & (1u << index)) && fine_turn) {
             // Stock consumes all three words synchronously; keep detents and
