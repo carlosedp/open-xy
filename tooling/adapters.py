@@ -293,7 +293,7 @@ def control_cycles(definition):
 
 
 def generate_synth_controls(directory, machines):
-    """Synth ownership, alternate selection and continuous fine controls."""
+    """Synth ownership, alternate selection, continuous fine controls and enum steps."""
     declarations, rows, formatters, lfo_rows = [], [], [], []
     for m in machines:
         if m.kind != 'effect':
@@ -306,6 +306,11 @@ def generate_synth_controls(directory, machines):
         effect = m.kind == 'effect'
         following = (not effect and control_cycles(m.definition)) or list(range(8))
         continuous = sum(1 << i for i, p in enumerate(m.definition['parameters']) if p['mapping']['kind'] != 'enum')
+        # Stock steps every control 1% a detent; an enum of n choices steps
+        # 100 // n, a choice a detent, rounded down so that none is skipped.
+        steps = [max(1, 100 // len(p['mapping']['labels'])) if p['mapping']['kind'] == 'enum' else 1
+                 for p in m.definition['parameters']]
+        steps += [1] * (8 - len(steps))
         declarations.append(f'int {m.prefix}_ready() __asm__("{m.prefix}_ready");')
         # The engine or effect ID is an absolute symbol the linker supplies.
         id_symbol = m.prefix + ('_fx_id' if effect else '_engine_id')
@@ -337,7 +342,7 @@ def generate_synth_controls(directory, machines):
         formatters.append('\n'.join(body))
         page = not effect and paged(m.definition)
         rows.append(f"    {{{id_symbol}, {m.prefix}_ready, {{{', '.join(map(str, following))}}}, {continuous}, {m.prefix}_format, "
-                    f"{'true' if effect else 'false'}, {'true' if page else 'false'}}},")
+                    f"{'true' if effect else 'false'}, {'true' if page else 'false'}, {{{', '.join(map(str, steps))}}}}},")
     return expand('synth_control_table.cpp.in', dict(READY_DECLS='\n'.join(declarations), MACHINES='\n'.join(rows), FORMATTERS='\n'.join(formatters), LFO_MACHINES='\n'.join(lfo_rows)),
                   Path(directory) / 'synth_control_table.cpp')
 

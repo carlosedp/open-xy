@@ -101,6 +101,14 @@ void sdk_synth_press(u32 encoder) {
     }
 }
 
+// An enum's turn, a choice a detent: stock's step scaled by the enum's step,
+// the event's other words as they came.
+u32 turn_steps(u32 project, u32 track, u32 index, u32 event, u32 step) {
+    const opxy::i32* source = reinterpret_cast<const opxy::i32*>(event);
+    const opxy::i32 coarse[3] = {source[0] * static_cast<opxy::i32>(step), source[1], source[2]};
+    return stock<u32(u32, u32, u32, const opxy::i32*)>(0x8d5ad5bc)(project, track, index, coarse);
+}
+
 // 8c0b15aa: the instrument controller's encoder turn edits parameter `index`
 // of the selected track through stock, which owns stepping, parameter locks
 // and publication. Indices 0..3 come only from the engine page's unshifted
@@ -123,6 +131,7 @@ u32 sdk_synth_turn(u32 project, u32 track, u32 index, u32 event) {
             const opxy::i32 fine[3] = {source[0] / 10, source[1], source[2]};
             return stock<u32(u32, u32, u32, const opxy::i32*)>(0x8d5ad5bc)(project, track, index, fine);
         }
+        if (event && m->steps[index] > 1) return turn_steps(project, track, index, event, m->steps[index]);
     } else index = original_index;
     return stock<u32(u32, u32, u32, u32)>(0x8d5ad5bc)(project, track, index, event);
 }
@@ -137,6 +146,7 @@ u32 sdk_effect_turn(u32 project, u32 track, u32 index, u32 event) {
         const opxy::i32 fine[3] = {source[0] / 10, source[1], source[2]};
         return stock<u32(u32, u32, u32, const opxy::i32*)>(0x8d5ad5bc)(project, track, index, fine);
     }
+    if (m && event && m->steps[index] > 1) return turn_steps(project, track, index, event, m->steps[index]);
     return stock<u32(u32, u32, u32, u32)>(0x8d5ad5bc)(project, track, index, event);
 }
 

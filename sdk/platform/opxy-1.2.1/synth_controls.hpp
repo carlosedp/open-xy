@@ -1,5 +1,5 @@
 // Owned synth/FX controls: generated metadata for alternate selection,
-// continuous fine turns and synth captions; GUI state lives in synth_controls.cpp.
+// continuous fine turns, enum steps and synth captions; GUI state lives in synth_controls.cpp.
 #pragma once
 #include <opxy/types.hpp>
 
@@ -17,6 +17,9 @@ struct SynthControls {
     bool (*format)(u32 slot, i32 value, char* text);
     bool effect;
     bool page;
+    // Each slot's stock step per detent: 1 for continuous controls, and for an
+    // enum of n choices 100 / n, so that a detent moves one choice and never two.
+    u8 steps[parameter_slots];
     u32 engine() const { return static_cast<u32>(reinterpret_cast<__UINTPTR_TYPE__>(id)); }
 };
 // GUI-only, bounded one-decimal formatting. Caller provides 16 bytes.
